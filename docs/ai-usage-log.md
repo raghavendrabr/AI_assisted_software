@@ -151,6 +151,108 @@ below because they are the clearest evidence of engineer-led, AI-accelerated wor
 
 ---
 
+## Session 2 — Project scaffolding & local runtime (Day 1, Step 2)
+
+### AI-009 — Build scaffolding and local PostgreSQL setup
+
+- **Intent / prompt (from the engineer):** Day 1 Step 2 only — scaffold the project and
+  local runtime with **no** business functionality. Specifically: rename `master`→`main`;
+  verify all framework/dependency versions against **official primary sources** (not
+  endoflife.date, not memory) and record them in an ADR; create `pom.xml` with only the
+  required dependencies; a minimal entry-point class; `application.yml`,
+  `application-local.yml.example`, `docker-compose.yml`, `.env.example`; Postgres-only
+  Compose (app via Maven); truthful README; and this log entry. Explicitly **no** tables,
+  migrations, entities, repositories, controllers, services, hash logic, or business code.
+
+- **Versions proposed (by AI, then verified):** Spring Boot 4.1.0; Java 21; springdoc
+  3.1.0; Flyway, PostgreSQL driver, and Testcontainers left to the Spring Boot BOM.
+
+- **Official sources checked (by direct retrieval, 2026-08-17):**
+  - Spring Boot 4.1.0 **system requirements** page (`docs.spring.io/spring-boot/system-requirements.html`): Java 17–26, Maven 3.6.3+, Spring Framework 7.0.8+.
+  - **Maven Central `maven-metadata.xml`** (authoritative released-version records) for `spring-boot-starter-parent` (→ 4.1.0), `springdoc-openapi-starter-webmvc-ui` (→ 3.1.0), `flyway-core`/`flyway-database-postgresql`, `postgresql`, `testcontainers/postgresql`, `testcontainers-bom`.
+  - **Spring Boot 4.1.0 `spring-boot-dependencies` BOM** read directly for managed versions: Flyway 12.4.0, PostgreSQL driver 42.7.11, Testcontainers 2.0.5 (BOM imports `testcontainers-bom`), Jackson 3.1.4, Spring Framework 7.0.8. springdoc is **not** BOM-managed.
+
+- **Accepted:**
+  - Spring Boot 4.1.0 parent; Java 21; **springdoc 3.1.0 pinned** (only non-BOM dependency).
+  - **Let the BOM govern** Flyway, PostgreSQL driver, and Testcontainers (declared without versions) — most defensible, avoids drift. Recorded in ADR 0001.
+  - Postgres-only Docker Compose with a healthcheck; app run via `mvn spring-boot:run`.
+
+- **Modified (vs. an earlier/naive default):**
+  - Did **not** pin standalone-latest Flyway (13.3.0) or PG driver (42.7.13); used the
+    BOM-managed 12.4.0 / 42.7.11 instead, to stay within Spring Boot's verified set.
+  - Set `spring.jpa.hibernate.ddl-auto=none` and added no migrations, so **no schema is
+    created** in this step (honest to the "no tables yet" constraint).
+
+- **Rejected:**
+  - endoflife.date and model memory as version sources (used primary metadata instead).
+  - Adding an application container to Compose (no genuine image exists yet — Postgres-only).
+  - Any secrets in committed files; all sensitive values are env-var placeholders with
+    local-only defaults.
+
+- **Validation actually run (2026-08-17, this session):**
+  - `mvn compile` — **initially FAILED**, surfacing two real Testcontainers 2.x facts that
+    were corrected (recorded in ADR 0001):
+    1. the Spring Boot parent does not manage Testcontainers module versions downstream →
+       imported `testcontainers-bom` (2.0.5) in `dependencyManagement`;
+    2. Testcontainers 2.x **renamed** the module to `org.testcontainers:testcontainers-postgresql`
+       (was `org.testcontainers:postgresql` in 1.x) → coordinates fixed. Then compile passed.
+  - `mvn dependency:tree` — passed; resolved versions match ADR 0001 exactly (Spring Boot
+    4.1.0, PG driver 42.7.11, Flyway 12.4.0, springdoc 3.1.0, Testcontainers 2.0.5).
+  - `mvn test` — passed: **1 test, 0 failures** (default context-load smoke test starting a
+    real Testcontainers PostgreSQL 16).
+  - `docker compose config` — valid.
+  - `docker compose up` / health / `down -v` — PostgreSQL reached **healthy** and torn down
+    cleanly. Host port 5432 was already taken by an unrelated project's container
+    (`converge-data`), which was **left untouched**; validated on `POSTGRES_PORT=5433`
+    instead, and added a README note about the override.
+  - Toolchain note: Maven was not installed on this machine; a cached Apache Maven 3.9.9
+    (from `~/.m2/wrapper/dists`) was used from a scratchpad location to run validation. A
+    committed Maven Wrapper is a candidate follow-up so the build is reproducible without a
+    global Maven install.
+  - **No secrets or private keys** were created or staged; committed config uses only
+    local-only placeholders.
+
+- **Engineer validation still pending:** _<Raghavendra to independently review files + re-run
+  validation on your machine>_
+
+- **Human sign-off:** _<PENDING: Raghavendra to review/approve>_
+
+### AI-010 — Maven Wrapper added to the scaffolding commit
+
+- **Intent / prompt (from the engineer):** add the standard Maven Wrapper to the same
+  scaffolding commit, generated with Maven 3.9.9 via the official generator (no
+  hand-written or unverified-source scripts), pinned to Apache Maven 3.9.9; update the
+  README to use `./mvnw` / `mvnw.cmd`; clarify config-loading semantics; re-validate
+  through the wrapper.
+- **What the AI did:** ran `mvn wrapper:wrapper -Dmaven=3.9.9` (official
+  `maven-wrapper-plugin` 3.3.4) to produce `mvnw`, `mvnw.cmd`, and
+  `.mvn/wrapper/maven-wrapper.properties` (`only-script` distribution → no jar).
+- **Issue caught during setup:** the Step-1 `.gitignore` ignored
+  `.mvn/wrapper/maven-wrapper.properties`; committing that state would have broken the
+  wrapper's version pin. Detected via `git check-ignore`; the ignore line was removed so
+  the properties file is committed. Recorded in ADR 0001.
+- **Accepted:** official-generator wrapper, `only-script`, pinned to 3.9.9 from
+  `repo.maven.apache.org`; README switched to `./mvnw` / `mvnw.cmd`; explicit README
+  section clarifying that (a) `application-local.yml.example` is a non-loaded template
+  until copied to `application-local.yml` **and** the `local` profile is activated (or env
+  vars supplied), and (b) Docker Compose `.env` configures Compose only and is not
+  auto-exported to a separately launched Maven/JVM process.
+- **Rejected:** hand-authored wrapper scripts; downloading the wrapper from any
+  unverified source; committing the wrapper properties as ignored.
+- **Validation run via the wrapper (2026-08-17):**
+  - `./mvnw --version` → Apache Maven **3.9.9** on Java 21 (wrapper downloaded Maven from
+    `repo.maven.apache.org` on first use).
+  - `./mvnw dependency:tree` → passed; same resolved versions as before (Spring Boot 4.1.0,
+    PG 42.7.11, Flyway 12.4.0, springdoc 3.1.0, Testcontainers 2.0.5).
+  - `./mvnw test` → passed: **1 test, 0 failures** (context-load smoke test on Testcontainers
+    PostgreSQL 16).
+  - `docker compose config` → valid; secret/artifact scan → clean; wrapper files staged,
+    `target/` ignored.
+- **Engineer validation still pending:** _<Raghavendra to re-run `./mvnw`/`mvnw.cmd` on your machine>_
+- **Human sign-off:** _<PENDING: Raghavendra to review/approve>_
+
+---
+
 ## How to read this log going forward
 
 Each future task (implementation, tests, refactors) will get its own `AI-0xx` entry

@@ -1,0 +1,42 @@
+# =============================================================================
+# Local development stack — PostgreSQL ONLY.
+#
+# The application is NOT containerized in this compose file. At the scaffolding
+# stage there is no application image or Dockerfile, and the app is run locally
+# with the Maven Wrapper:
+#
+#     ./mvnw spring-boot:run          # macOS/Linux
+#     mvnw.cmd spring-boot:run        # Windows
+#
+# against the PostgreSQL started here. This is the simplest working setup; an app
+# service can be added later once a container build genuinely exists.
+#
+# Credentials come from environment variables (see .env.example). No real secrets
+# are committed — the values in .env.example are LOCAL-ONLY development defaults.
+# =============================================================================
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: audit-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-audit}
+      POSTGRES_USER: ${POSTGRES_USER:-audit}
+      # LOCAL-ONLY development password default. Override via .env for anything real.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-audit_local_dev}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - audit-pg-data:/var/lib/postgresql/data
+    healthcheck:
+      # Marks the container healthy only once PostgreSQL is actually accepting
+      # connections for the configured user/database.
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-audit} -d ${POSTGRES_DB:-audit}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  audit-pg-data:
+    name: audit-pg-data

@@ -1,13 +1,17 @@
 # ---- Java / Maven ----
 target/
-!.mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/
 !**/src/test/**/target/
 *.class
 
+# ---- Maven Wrapper (MUST be committed) ----
+# The wrapper scripts and its properties file are committed so the build is
+# reproducible without a global Maven install. Do NOT ignore them. With the
+# 'only-script' distribution type there is no maven-wrapper.jar to commit.
+# (Only Maven's own transient timing file is ignored.)
+
 # ---- Build tools ----
 .mvn/timing.properties
-.mvn/wrapper/maven-wrapper.properties
 dependency-reduced-pom.xml
 build/
 out/

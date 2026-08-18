@@ -1,0 +1,70 @@
+# =============================================================================
+# Audit Log Service — base configuration (scaffolding stage)
+#
+# This file is COMMITTED and MUST NOT contain secrets. Every sensitive value is
+# an environment-variable placeholder with a safe, non-secret local default that
+# only works against the local Docker Compose PostgreSQL. Real credentials for any
+# non-local environment come from the environment or from a git-ignored
+# application-local.yml (see application-local.yml.example).
+#
+# NOTE: No database schema is created in this step. There are no Flyway migrations
+# and no JPA entities yet, so schema management is intentionally inert.
+# =============================================================================
+
+spring:
+  application:
+    name: audit-log-service
+
+  datasource:
+    # Defaults target the local Docker Compose PostgreSQL (see docker-compose.yml).
+    # The default password below is a LOCAL-ONLY development value, not a secret.
+    url: ${AUDIT_DB_URL:jdbc:postgresql://localhost:5432/audit}
+    username: ${AUDIT_DB_USERNAME:audit}
+    password: ${AUDIT_DB_PASSWORD:audit_local_dev}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      # 'none': we do NOT let Hibernate create/alter tables. Schema will be owned by
+      # Flyway migrations in a later step. No tables are created now.
+      ddl-auto: none
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+
+  flyway:
+    # Flyway is on the classpath, but NO migrations exist yet. Keeping it enabled
+    # with no migration scripts is a no-op. When the app is started it will simply
+    # find zero migrations to apply. (Migrations are added in a later step.)
+    enabled: true
+    # baseline-on-migrate stays false; there is no existing schema to baseline.
+
+server:
+  port: ${AUDIT_SERVER_PORT:8080}
+
+# springdoc / Swagger UI is on the classpath for later API documentation.
+# Left at defaults; documented endpoints will appear once controllers exist.
+springdoc:
+  api-docs:
+    enabled: true
+  swagger-ui:
+    enabled: true
+
+# -----------------------------------------------------------------------------
+# Placeholders for values that will be USED in later steps (auth, export signing).
+# They are declared here as documentation of the intended env vars. They are NOT
+# consumed by any code yet and carry NO real secrets.
+#
+# audit:
+#   security:
+#     api-keys: ${AUDIT_API_KEYS:}          # server-side key->role mapping (later step)
+#   export:
+#     signing-key-path: ${AUDIT_EXPORT_SIGNING_KEY_PATH:}  # Ed25519 PRIVATE key file (never committed)
+#     public-key-path:  ${AUDIT_EXPORT_PUBLIC_KEY_PATH:}   # Ed25519 public key (may be committed later)
+# -----------------------------------------------------------------------------
+
+logging:
+  level:
+    root: INFO

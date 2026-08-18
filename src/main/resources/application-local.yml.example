@@ -1,0 +1,41 @@
+# =============================================================================
+# EXAMPLE local override — this is a TEMPLATE ONLY.
+#
+# IMPORTANT: while this file keeps the `.example` suffix it is NOT loaded by Spring.
+# To actually use it you must BOTH (1) copy it AND (2) activate the `local` profile:
+#
+#   cp src/main/resources/application-local.yml.example src/main/resources/application-local.yml
+#   ./mvnw spring-boot:run -Dspring-boot.run.profiles=local
+#   #   (Windows: mvnw.cmd spring-boot:run -Dspring-boot.run.profiles=local)
+#   #   or set the env var:  SPRING_PROFILES_ACTIVE=local
+#
+# Alternatively, skip this file entirely and just export AUDIT_DB_* environment vars.
+#
+# The real application-local.yml is GIT-IGNORED (see .gitignore) and is where you
+# put values you do not want committed. This .example file is committed and MUST
+# contain ONLY non-secret placeholder values.
+#
+# For most local development you do NOT need this file at all: the defaults in
+# application.yml already point at the Docker Compose PostgreSQL. Use this only to
+# override those defaults on your machine.
+# =============================================================================
+
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/audit
+    username: audit
+    # Replace with your own LOCAL password if you changed it in .env / docker-compose.
+    password: CHANGE_ME_LOCAL_DEV_PASSWORD
+
+# Values intended for later steps (not consumed by code yet). Shown here so you know
+# which environment variables the service will eventually read. Do NOT put real
+# secrets in a committed file; keep them in the git-ignored application-local.yml
+# or in environment variables.
+#
+# audit:
+#   security:
+#     # Example ONLY — replace, and never commit real keys. Format TBD in a later step.
+#     api-keys: "writer-key:WRITER,compliance-key:COMPLIANCE_READER,admin-key:ADMIN"
+#   export:
+#     signing-key-path: /run/secrets/audit_export_ed25519_private.pem   # never commit this file
+#     public-key-path:  dev-keys/audit_export_ed25519_public.pem        # public key may be committed later
