@@ -1,0 +1,69 @@
+# ---- Java / Maven ----
+target/
+!.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
+*.class
+
+# ---- Build tools ----
+.mvn/timing.properties
+.mvn/wrapper/maven-wrapper.properties
+dependency-reduced-pom.xml
+build/
+out/
+
+# ---- IDEs ----
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.settings/
+.project
+.classpath
+.factorypath
+*.code-workspace
+
+# ---- OS ----
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---- Logs / runtime ----
+*.log
+logs/
+*.pid
+*.seed
+*.pid.lock
+
+# ---- Secrets & local config (NEVER commit) ----
+# Local override that carries real API keys / role mappings and DB creds.
+application-local.yml
+application-local.yaml
+application-secret.*
+.env
+.env.*
+!.env.example
+secrets/
+
+# ---- Private keys (NEVER commit — including development keys) ----
+# ALL private keys, including local development keys, must remain ignored.
+# We may later commit ONLY a PUBLIC verification key, plus a script that
+# generates a local development keypair on each machine. No private-key
+# exception is permitted here.
+*.pem
+*.key
+*.p8
+*.pkcs8
+*.pfx
+*.p12
+id_ed25519
+id_ed25519.*
+export-signing-*
+!*.pub
+!*_public.pem
+
+# ---- Test / tooling artifacts ----
+.gradle/
+coverage/
+*.exec
