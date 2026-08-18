@@ -88,7 +88,15 @@
             <scope>runtime</scope>
         </dependency>
 
-        <!-- ===== Flyway migrations (versions managed by Spring Boot BOM = 12.4.0) ===== -->
+        <!-- ===== Flyway migrations (versions managed by Spring Boot BOM = 12.4.0) =====
+             NOTE: Spring Boot 4.x moved Flyway AUTO-CONFIGURATION out of
+             spring-boot-autoconfigure into the dedicated `spring-boot-flyway` module.
+             Without it, flyway-core is on the classpath but Flyway never runs at startup.
+             See ADR 0002. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-flyway</artifactId>
+        </dependency>
         <dependency>
             <groupId>org.flywaydb</groupId>
             <artifactId>flyway-core</artifactId>

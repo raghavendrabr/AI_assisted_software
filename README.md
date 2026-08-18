@@ -21,12 +21,12 @@ correctness, design, and authorship.
 | Stage | State |
 |---|---|
 | Requirement analysis & assumptions | Done (docs) |
-| Design & decision records | In progress (`docs/decisions/` — ADR 0001 records versions) |
-| Build + local runtime scaffolding | Done (this step: `pom.xml`, entry point, config, Compose) |
-| Database schema / Flyway migrations | **Not started** |
-| APIs / entities / hash-chain / business logic | **Not started** |
-| Tests | **Only the default Spring context-load check** |
-| Runnable end-to-end | **Not yet** (the app starts, but has no functional endpoints) |
+| Design & decision records | In progress (`docs/decisions/` — ADR 0001 versions, ADR 0002 schema) |
+| Build + local runtime scaffolding | Done (`pom.xml`, entry point, config, Compose, Maven Wrapper) |
+| Database schema / Flyway migrations | **V1 only** — `audit_event` + `audit_chain_head` tables + seed row |
+| APIs / entities / hash-chain / business logic | **Not started** (no entities, repositories, services, hashing, or endpoints) |
+| Tests | Context-load check + **V1 schema integration test** |
+| Runnable end-to-end | **Not yet** (the app starts and creates the schema, but has no functional endpoints) |
 
 API examples and test-status badges will be added **only once the corresponding code
 exists**. They are intentionally omitted now to avoid implying functionality that has
@@ -37,8 +37,9 @@ not been built.
 ## Getting started (local, scaffolding stage)
 
 What genuinely works today: the project compiles, the Spring Boot application starts,
-and a local PostgreSQL runs under Docker Compose. There are **no** working endpoints or
-migrations yet.
+Flyway applies the **V1** schema migration (creating `audit_event`, `audit_chain_head`,
+and the seeded empty-chain head row), and a local PostgreSQL runs under Docker Compose.
+There are still **no** working endpoints and **no** business logic.
 
 ### Prerequisites
 - **JDK 21** (Spring Boot 4.1 supports Java 17–26; this project targets 21).
@@ -73,8 +74,13 @@ The app boots against the Compose PostgreSQL using the defaults in
 
 ### 3. Stop PostgreSQL
 ```
-docker compose down          # add -v to also delete the data volume
+docker compose down          # stops & removes the container; PRESERVES the data volume
+docker compose down -v       # also DELETES the local database volume (data is lost)
 ```
+> Data lives in the named volume `audit-pg-data`. `docker compose down` keeps it (your
+> data survives a restart); `docker compose down -v` removes it. The PostgreSQL image's
+> `POSTGRES_*` initialization only runs against a **new, empty** volume — so to pick up
+> changed init credentials you must recreate the volume with `down -v`.
 
 ### Configuration & how it is (and isn't) loaded — read this
 - **`application.yml`** (committed) is always loaded. It contains only **local-only
@@ -97,11 +103,14 @@ docker compose down          # add -v to also delete the data volume
 
 ### Notes
 - Secrets are never committed. `application.yml`, `.env.example`, and
-  `application-local.yml.example` contain only **local-only** placeholder values;
-  real values belong in the git-ignored `.env` / `application-local.yml` or in
-  environment variables.
-- Dependency versions and how they were verified are recorded in
-  [docs/decisions/0001-technology-versions.md](docs/decisions/0001-technology-versions.md).
+  `application-local.yml.example` contain only **local-only** placeholder values.
+  `application-local.yml` is strictly for a developer's **local** machine (git-ignored).
+- **Non-local environments do not use `application-local.yml` or committed defaults.**
+  Real credentials there are supplied via **protected environment injection or a secret
+  manager** (e.g. Docker/K8s secrets, Vault, a cloud secret manager) — never checked into
+  the repository.
+- Decisions and how versions/schema were verified are recorded under
+  [docs/decisions/](docs/decisions/) (ADR 0001 — versions; ADR 0002 — audit-chain schema).
 
 ---
 
@@ -160,10 +169,13 @@ These map to the three assignment scenarios. **None are implemented yet.**
 │       │   └── AuditLogServiceApplication.java   <- minimal Spring Boot entry point
 │       └── resources/
 │           ├── application.yml                    <- base config (env-var placeholders, no secrets)
-│           └── application-local.yml.example      <- example local override (copy to application-local.yml)
+│           ├── application-local.yml.example      <- example local override (copy to application-local.yml)
+│           └── db/migration/
+│               └── V1__create_audit_chain_foundation.sql  <- audit_event + audit_chain_head + seed
 └── docs/
     ├── decisions/
-    │   └── 0001-technology-versions.md  <- ADR: verified dependency versions & sources
+    │   ├── 0001-technology-versions.md  <- ADR: verified dependency versions & sources
+    │   └── 0002-audit-chain-schema.md   <- ADR: audit-chain schema & constraints (V1)
     ├── requirements/
     │   ├── scenario-a.md          <- assignment requirements vs. our assumptions (A)
     │   ├── scenario-b.md          <- assignment requirements vs. our assumptions (B)

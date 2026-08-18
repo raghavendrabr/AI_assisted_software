@@ -251,6 +251,54 @@ below because they are the clearest evidence of engineer-led, AI-accelerated wor
 - **Engineer validation still pending:** _<Raghavendra to re-run `./mvnw`/`mvnw.cmd` on your machine>_
 - **Human sign-off:** _<PENDING: Raghavendra to review/approve>_
 
+## Session 3 — Audit chain schema (Day 1, Commit 3)
+
+### AI-011 — Flyway V1 audit-chain foundation
+
+- **Intent / prompt (from the engineer):** create `V1__create_audit_chain_foundation.sql`
+  with exactly two tables (`audit_event`, `audit_chain_head`), the specified columns and
+  constraints (32-byte SHA-256 hashes; genesis has null previous_hash; later events require
+  a 32-byte previous_hash; unique event id & sequence; non-unique content_hash; positive
+  sequence & schema version), a seeded singleton empty-chain head row, three justified
+  indexes, a focused Testcontainers schema test, ADR 0002, and specific config-doc
+  corrections — with **no** entities/repositories/DTOs/hashing/services/controllers/
+  verification/security/redaction/archival/export.
+- **What the AI produced:** the V1 migration, `AuditChainSchemaV1Test` (JDBC-level, so it
+  tests DB constraints directly without introducing entities/repositories), ADR 0002, and
+  the doc corrections.
+- **Design choices made explicit (accepted):** BYTEA (raw 32-byte) hashes with
+  `octet_length = 32` CHECKs; content_hash intentionally NOT unique; singleton head pinned
+  via `CHECK (id = 1)`; empty-chain consistency CHECK; three indexes matching only the
+  Scenario-A query patterns; DB-layer CHECKs as deliberate defense-in-depth so direct
+  data-store tampering is still rejected.
+- **Config-documentation corrections applied (previously approved):**
+  - Flyway is **no longer described as inert** — as of V1 it applies a real migration.
+  - Clarified `application-local.yml` is **local-only**; non-local secrets use protected
+    environment injection or a secret manager, never committed.
+  - Documented that `POSTGRES_*` init applies only to a **new, empty** volume.
+  - Documented `docker compose down` **preserves** the data volume; `down -v` **deletes** it.
+- **Test isolation decision:** `@Transactional` on the schema test so each method rolls back,
+  preventing cross-test contamination (e.g. duplicate sequence 1).
+- **Rejected / not done:** any entities, repositories, DTOs, hashing, services, controllers,
+  search, verification, security, redaction, archival, or export — out of scope for this commit.
+- **Build finding (honest):** the schema test initially failed —
+  `relation "flyway_schema_history" does not exist`. Root cause: **Spring Boot 4.x moved
+  Flyway auto-configuration into a dedicated `spring-boot-flyway` module**; with only
+  `flyway-core` present, Flyway never ran. Fixed by adding `spring-boot-flyway`
+  (BOM-managed). Recorded in ADR 0002.
+- **Validation run (2026-08-18):**
+  - `./mvnw test` → **12 tests, 0 failures** (1 context-load + 11 schema tests); Flyway
+    applied V1 in-test.
+  - `docker compose config` → valid.
+  - Applied V1 at app startup against Compose PostgreSQL 16 (port 5433, since 5432 was held
+    by an unrelated project); Flyway created `flyway_schema_history` and applied V1.
+  - DB inspection: `flyway_schema_history` shows V1 success=t; `audit_event` +
+    `audit_chain_head` exist; singleton seed row `id=1, current_sequence=0, current_hash=NULL`;
+    `audit_event` empty; all 7 audit_event and 5 chain_head constraints + 3 indexes present;
+    a bad-hash-length insert was rejected by `ck_audit_event_content_hash_len`.
+  - Torn down with `down -v`; `git diff --check` clean; no secrets/artifacts staged.
+- **Human sign-off:** _<PENDING: Raghavendra to review/approve>_
+
 ---
 
 ## How to read this log going forward

@@ -35,11 +35,11 @@ spring:
           time_zone: UTC
 
   flyway:
-    # Flyway is on the classpath, but NO migrations exist yet. Keeping it enabled
-    # with no migration scripts is a no-op. When the app is started it will simply
-    # find zero migrations to apply. (Migrations are added in a later step.)
+    # Flyway manages the schema. As of V1 there IS a migration
+    # (db/migration/V1__create_audit_chain_foundation.sql); on startup Flyway
+    # applies any pending migrations and records them in flyway_schema_history.
     enabled: true
-    # baseline-on-migrate stays false; there is no existing schema to baseline.
+    # baseline-on-migrate stays false; the schema is created entirely by Flyway.
 
 server:
   port: ${AUDIT_SERVER_PORT:8080}
