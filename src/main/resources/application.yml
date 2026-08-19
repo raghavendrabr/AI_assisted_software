@@ -53,16 +53,26 @@ springdoc:
     enabled: true
 
 # -----------------------------------------------------------------------------
-# Placeholders for values that will be USED in later steps (auth, export signing).
-# They are declared here as documentation of the intended env vars. They are NOT
-# consumed by any code yet and carry NO real secrets.
-#
-# audit:
-#   security:
-#     api-keys: ${AUDIT_API_KEYS:}          # server-side key->role mapping (later step)
-#   export:
-#     signing-key-path: ${AUDIT_EXPORT_SIGNING_KEY_PATH:}  # Ed25519 PRIVATE key file (never committed)
-#     public-key-path:  ${AUDIT_EXPORT_PUBLIC_KEY_PATH:}   # Ed25519 public key (may be committed later)
+# API-key -> role mappings. Keys come from ENVIRONMENT VARIABLES — NO real keys are
+# committed here. If a variable is unset the entry resolves to an empty key and is
+# skipped, so the endpoint is simply inaccessible until a real key is provided.
+# The client sends only X-API-Key; the role is resolved server-side.
+audit:
+  security:
+    api-keys:
+      - key: ${AUDIT_WRITER_KEY:}
+        role: WRITER
+      - key: ${AUDIT_COMPLIANCE_KEY:}
+        role: COMPLIANCE_READER
+      - key: ${AUDIT_ADMIN_KEY:}
+        role: ADMIN
+  # Compliance: which resourceType denotes client-account data (Scenario C in-scope slice).
+  compliance:
+    client-account-resource-type: ${AUDIT_CLIENT_ACCOUNT_RESOURCE_TYPE:CLIENT_ACCOUNT}
+
+# Placeholders for later steps (export signing) — not consumed yet, no secrets:
+#   audit.export.signing-key-path: ${AUDIT_EXPORT_SIGNING_KEY_PATH:}   # Ed25519 PRIVATE key (never committed)
+#   audit.export.public-key-path:  ${AUDIT_EXPORT_PUBLIC_KEY_PATH:}    # Ed25519 public key (may be committed)
 # -----------------------------------------------------------------------------
 
 logging:

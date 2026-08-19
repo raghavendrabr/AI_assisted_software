@@ -10,6 +10,7 @@ import java.time.OffsetDateTime;
  * @param resourceType exact resource-type match
  * @param resourceId   exact resource-id match
  * @param eventType    exact action/eventType match
+ * @param outcome      exact outcome match (e.g. SUCCESS, DENIED); null = any
  * @param from         inclusive lower bound on eventTimestamp
  * @param to           exclusive upper bound on eventTimestamp
  * @param afterSequence cursor: return only events with sequenceNumber strictly greater
@@ -20,6 +21,7 @@ public record EventSearchCriteria(
         String resourceType,
         String resourceId,
         String eventType,
+        String outcome,
         OffsetDateTime from,
         OffsetDateTime to,
         Long afterSequence,

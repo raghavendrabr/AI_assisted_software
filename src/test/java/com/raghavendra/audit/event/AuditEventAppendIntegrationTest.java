@@ -62,12 +62,14 @@ class AuditEventAppendIntegrationTest {
     @Test
     void append_firstEvent_isGenesis_andReturns201() {
         assertThat(mvc.post().uri("/api/v1/audit/events")
+                .header("X-API-Key", "test-writer-key")
                 .contentType(MediaType.APPLICATION_JSON).content(VALID_BODY))
                 .hasStatus(HttpStatus.CREATED)
                 .bodyJson()
                 .extractingPath("$.sequenceNumber").isEqualTo(1);
 
         assertThat(mvc.post().uri("/api/v1/audit/events") // second, to check body of one
+                .header("X-API-Key", "test-writer-key")
                 .contentType(MediaType.APPLICATION_JSON).content(VALID_BODY))
                 .hasStatus(HttpStatus.CREATED)
                 .bodyJson()
@@ -79,6 +81,7 @@ class AuditEventAppendIntegrationTest {
     @Test
     void append_genesis_hasNullPreviousHash_and64CharContentHash() {
         var result = mvc.post().uri("/api/v1/audit/events")
+                .header("X-API-Key", "test-writer-key")
                 .contentType(MediaType.APPLICATION_JSON).content(VALID_BODY);
         assertThat(result).hasStatus(HttpStatus.CREATED)
                 .bodyJson().extractingPath("$.previousHash").isNull();
@@ -96,6 +99,7 @@ class AuditEventAppendIntegrationTest {
                 }
                 """;
         assertThat(mvc.post().uri("/api/v1/audit/events")
+                .header("X-API-Key", "test-writer-key")
                 .contentType(MediaType.APPLICATION_JSON).content(body))
                 .hasStatus(HttpStatus.CREATED);
 
@@ -114,6 +118,7 @@ class AuditEventAppendIntegrationTest {
                   "resourceType": "CLIENT_ACCOUNT", "resourceId": "r", "outcome": "SUCCESS" }
                 """; // actorId missing
         assertThat(mvc.post().uri("/api/v1/audit/events")
+                .header("X-API-Key", "test-writer-key")
                 .contentType(MediaType.APPLICATION_JSON).content(body))
                 .hasStatus(HttpStatus.BAD_REQUEST);
         assertThat(eventRepository.count()).isZero();
@@ -122,6 +127,7 @@ class AuditEventAppendIntegrationTest {
     @Test
     void append_malformedJson_returns400() {
         assertThat(mvc.post().uri("/api/v1/audit/events")
+                .header("X-API-Key", "test-writer-key")
                 .contentType(MediaType.APPLICATION_JSON).content("{ not json "))
                 .hasStatus(HttpStatus.BAD_REQUEST);
     }
@@ -130,7 +136,11 @@ class AuditEventAppendIntegrationTest {
 
     @Test
     void collection_doesNotExposeUpdateOrDelete() {
-        assertThat(mvc.put().uri("/api/v1/audit/events")).hasStatus4xxClientError();
-        assertThat(mvc.delete().uri("/api/v1/audit/events")).hasStatus4xxClientError();
+        // With a valid WRITER key, PUT/DELETE still have no handler → 4xx (405/404), proving
+        // the collection is append-only (not merely blocked by auth).
+        assertThat(mvc.put().uri("/api/v1/audit/events")
+                .header("X-API-Key", "test-writer-key")).hasStatus4xxClientError();
+        assertThat(mvc.delete().uri("/api/v1/audit/events")
+                .header("X-API-Key", "test-writer-key")).hasStatus4xxClientError();
     }
 }

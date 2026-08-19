@@ -45,13 +45,18 @@ class AuditEventSearchIntegrationTest {
                 "SUCCESS", null, null, null), UUID.randomUUID());
     }
 
+    /** GET with a COMPLIANCE_READER key (search requires COMPLIANCE_READER or ADMIN). */
+    private org.springframework.test.web.servlet.assertj.MockMvcTester.MockMvcRequestBuilder get(String uri) {
+        return mvc.get().uri(uri).header("X-API-Key", "test-compliance-key");
+    }
+
     @Test
     void filterByActorId_returnsOnlyMatching() {
         append("alice", "acct-1", "USER_LOGIN");
         append("bob", "acct-1", "USER_LOGIN");
         append("alice", "acct-2", "RECORD_UPDATED");
 
-        assertThat(mvc.get().uri("/api/v1/audit/events?actorId=alice"))
+        assertThat(get("/api/v1/audit/events?actorId=alice"))
                 .hasStatusOk()
                 .bodyJson()
                 .extractingPath("$.events").asArray().hasSize(2);
@@ -63,7 +68,7 @@ class AuditEventSearchIntegrationTest {
         append("alice", "acct-2", "USER_LOGIN");
         append("alice", "acct-1", "RECORD_UPDATED");
 
-        assertThat(mvc.get().uri("/api/v1/audit/events?resourceId=acct-1&eventType=USER_LOGIN"))
+        assertThat(get("/api/v1/audit/events?resourceId=acct-1&eventType=USER_LOGIN"))
                 .hasStatusOk()
                 .bodyJson()
                 .extractingPath("$.events").asArray().hasSize(1);
@@ -76,19 +81,19 @@ class AuditEventSearchIntegrationTest {
         }
 
         // First page of 2.
-        var page1 = mvc.get().uri("/api/v1/audit/events?limit=2");
+        var page1 = get("/api/v1/audit/events?limit=2");
         assertThat(page1).hasStatusOk()
                 .bodyJson().extractingPath("$.events").asArray().hasSize(2);
         assertThat(page1).bodyJson().extractingPath("$.nextCursor").isEqualTo(2);
 
         // Second page after cursor=2 → sequences 3,4.
-        var page2 = mvc.get().uri("/api/v1/audit/events?limit=2&cursor=2");
+        var page2 = get("/api/v1/audit/events?limit=2&cursor=2");
         assertThat(page2).hasStatusOk()
                 .bodyJson().extractingPath("$.events[0].sequenceNumber").isEqualTo(3);
         assertThat(page2).bodyJson().extractingPath("$.nextCursor").isEqualTo(4);
 
         // Last page after cursor=4 → sequence 5, nextCursor null (not full).
-        var page3 = mvc.get().uri("/api/v1/audit/events?limit=2&cursor=4");
+        var page3 = get("/api/v1/audit/events?limit=2&cursor=4");
         assertThat(page3).hasStatusOk()
                 .bodyJson().extractingPath("$.events").asArray().hasSize(1);
         assertThat(page3).bodyJson().extractingPath("$.nextCursor").isNull();
@@ -98,7 +103,7 @@ class AuditEventSearchIntegrationTest {
     void limit_isBoundedByServerMax() {
         append("alice", "acct-1", "USER_LOGIN");
         // Requesting a huge limit must be clamped to MAX_LIMIT and not error.
-        assertThat(mvc.get().uri("/api/v1/audit/events?limit=100000"))
+        assertThat(get("/api/v1/audit/events?limit=100000"))
                 .hasStatusOk()
                 .bodyJson().extractingPath("$.limit").isEqualTo(AuditEventQueryService.MAX_LIMIT);
     }
@@ -109,7 +114,7 @@ class AuditEventSearchIntegrationTest {
         for (int i = 0; i < 4; i++) {
             append("alice", "acct-1", "USER_LOGIN");
         }
-        var page = mvc.get().uri("/api/v1/audit/events?limit=2&cursor=2"); // remaining: seq 3,4 exactly
+        var page = get("/api/v1/audit/events?limit=2&cursor=2"); // remaining: seq 3,4 exactly
         assertThat(page).hasStatusOk()
                 .bodyJson().extractingPath("$.events").asArray().hasSize(2);
         assertThat(page).bodyJson().extractingPath("$.nextCursor").isNull();
@@ -121,7 +126,7 @@ class AuditEventSearchIntegrationTest {
         for (int i = 0; i < 3; i++) {
             append("alice", "acct-1", "USER_LOGIN");
         }
-        var page = mvc.get().uri("/api/v1/audit/events?limit=2");
+        var page = get("/api/v1/audit/events?limit=2");
         assertThat(page).hasStatusOk()
                 .bodyJson().extractingPath("$.events").asArray().hasSize(2);
         assertThat(page).bodyJson().extractingPath("$.nextCursor").isEqualTo(2);
@@ -129,16 +134,16 @@ class AuditEventSearchIntegrationTest {
 
     @Test
     void nonPositiveLimit_returns400() {
-        assertThat(mvc.get().uri("/api/v1/audit/events?limit=0")).hasStatus(400);
-        assertThat(mvc.get().uri("/api/v1/audit/events?limit=-5")).hasStatus(400);
+        assertThat(get("/api/v1/audit/events?limit=0")).hasStatus(400);
+        assertThat(get("/api/v1/audit/events?limit=-5")).hasStatus(400);
     }
 
     @Test
     void fromNotBeforeTo_returns400() {
-        assertThat(mvc.get().uri("/api/v1/audit/events"
+        assertThat(get("/api/v1/audit/events"
                 + "?from=2026-08-18T12:00:00Z&to=2026-08-18T10:00:00Z")).hasStatus(400);
         // Equal from/to is also invalid (from must be strictly before to).
-        assertThat(mvc.get().uri("/api/v1/audit/events"
+        assertThat(get("/api/v1/audit/events"
                 + "?from=2026-08-18T12:00:00Z&to=2026-08-18T12:00:00Z")).hasStatus(400);
     }
 }

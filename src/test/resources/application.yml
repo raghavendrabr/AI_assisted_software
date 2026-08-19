@@ -1,0 +1,13 @@
+# Test-only configuration. These API keys are NON-PRODUCTION, used solely by the test suite
+# to exercise authentication/authorization. They are not real secrets.
+audit:
+  security:
+    api-keys:
+      - key: test-writer-key
+        role: WRITER
+      - key: test-compliance-key
+        role: COMPLIANCE_READER
+      - key: test-admin-key
+        role: ADMIN
+  compliance:
+    client-account-resource-type: CLIENT_ACCOUNT

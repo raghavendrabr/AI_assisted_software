@@ -63,6 +63,9 @@ public class AuditEventQueryService {
                 // eventType filters the stored `action` column.
                 ps.add(cb.equal(root.get("action"), c.eventType()));
             }
+            if (c.outcome() != null) {
+                ps.add(cb.equal(root.get("outcome"), c.outcome()));
+            }
             if (c.from() != null) {
                 ps.add(cb.greaterThanOrEqualTo(root.get("eventTimestamp"), c.from()));
             }

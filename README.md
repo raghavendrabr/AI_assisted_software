@@ -28,10 +28,11 @@ correctness, design, and authorship.
 | Write API | `POST /api/v1/audit/events` — transactional append, `SELECT ... FOR UPDATE` chain lock (ADR 0004) |
 | Read API | `GET /api/v1/audit/events` — filtered, cursor-paginated, bounded search (ADR 0005) |
 | Verify API | `GET /api/v1/audit/verify` — full chain walk, 6 violation types (ADR 0005) |
+| Security | **API-key auth** (`X-API-Key`) → server-side roles WRITER / COMPLIANCE_READER / ADMIN, per-endpoint authorization (ADR 0006) |
+| Compliance (Scenario C slice) | `GET /api/v1/compliance/access-report` — client-account access (success + denied), actor/account/outcome/time filters |
 | Redaction / archival / export | **Not started** (Scenario B) |
-| Security | **Temporary permit-all** (real API-key/role auth is a later step) |
-| Tests | 59 total — hashing (22), V1 schema (11), append/concurrency (12), search (4), verify (9), handler (2), context (1) |
-| Runnable end-to-end | **Scenario A works** — append, query, verify; tamper a row in the DB and verify detects it |
+| Tests | 76 total — hashing (22), V1 schema (11), append/concurrency (12), search (8), verify (10), security (7), compliance (5), handler (2), context (1) |
+| Runnable end-to-end | **Scenario A works** (append, query, verify, tamper-detect) + auth + compliance report |
 
 API examples and test-status badges will be added **only once the corresponding code
 exists**. They are intentionally omitted now to avoid implying functionality that has
@@ -106,9 +107,22 @@ docker compose down -v       # also DELETES the local database volume (data is l
   `.env`, mirror them for the app via environment variables or `application-local.yml`
   (the `AUDIT_DB_*` entries in `.env.example` show the intended values to keep in sync).
 
+### Authentication
+All `/api/v1/**` endpoints require an `X-API-Key` header. Keys map to roles **server-side**
+(WRITER / COMPLIANCE_READER / ADMIN) — the client never sends a role. Supply keys via env vars
+(`AUDIT_WRITER_KEY`, `AUDIT_COMPLIANCE_KEY`, `AUDIT_ADMIN_KEY`); unset keys are simply
+inaccessible. Missing/invalid key → 401; wrong role → 403. Example:
+```
+curl -H "X-API-Key: $AUDIT_WRITER_KEY" -H "Content-Type: application/json" \
+     -d '{"eventType":"USER_LOGIN","actorId":"u1","actorType":"USER",
+          "resourceType":"CLIENT_ACCOUNT","resourceId":"acct-1","outcome":"SUCCESS"}' \
+     http://localhost:8080/api/v1/audit/events
+```
+
 ### Notes
 - Secrets are never committed. `application.yml`, `.env.example`, and
   `application-local.yml.example` contain only **local-only** placeholder values.
+  Test-only API keys live in `src/test/resources/application.yml` and are clearly non-production.
   `application-local.yml` is strictly for a developer's **local** machine (git-ignored).
 - **Non-local environments do not use `application-local.yml` or committed defaults.**
   Real credentials there are supplied via **protected environment injection or a secret

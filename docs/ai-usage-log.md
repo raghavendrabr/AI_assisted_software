@@ -419,6 +419,41 @@ below because they are the clearest evidence of engineer-led, AI-accelerated wor
   `nextCursor`; concurrent-append verification never false-breaks.
 - **Human sign-off:** _<PENDING: Raghavendra to review/approve>_
 
+## Session 7 — API-key security & compliance reporting (Day 1, Commit 7)
+
+### AI-015 — Server-side API-key auth + compliance access report
+
+- **Intent / prompt (from the engineer):** server-side API-key authentication; WRITER,
+  COMPLIANCE_READER, ADMIN roles; endpoint authorization; successful and denied client-account
+  access events; compliance access report with actor/account/outcome/time filters; security and
+  compliance integration tests; docs.
+- **What the AI produced:** `ApiKeyProperties`/`ApiRole`/`ApiKeyService` (SHA-256 + constant-time
+  key match, server-side role resolution), `ApiKeyAuthFilter`, `SecurityConfig` (authorization
+  matrix, 401 vs 403 handlers, stateless), replacing the temporary permit-all config;
+  `ComplianceProperties`/`ComplianceConfig`, `AccessReportEntry`/`AccessReportResponse`,
+  `ComplianceReportService`, `ComplianceReportController` (`GET /api/v1/compliance/access-report`);
+  an `outcome` filter added to the shared query criteria. ADR 0006 records it.
+- **Auth semantics:** client sends only `X-API-Key`; role resolved server-side; no real keys
+  committed (`application.yml` uses `${AUDIT_*_KEY:}` placeholders; test keys live in
+  `src/test/resources/application.yml` and are clearly non-production). 401 = unauthenticated,
+  403 = wrong role.
+- **Compliance:** scoped to the configured client-account `resourceType`; includes BOTH
+  successful and denied access; filters by actor/account/outcome/time; entries carry
+  `sequenceNumber` + `contentHash` for tie-back to the chain; reuses the bounded cursor query.
+- **Accepted / Rejected:** accepted static API keys as a documented prototype boundary
+  (production → OAuth2/OIDC + mTLS + secret manager); accepted distinct-capability roles with
+  ADMIN granted the union explicitly. No redaction/archival/export added (out of scope).
+- **Hardening added in review (engineer-directed):** `SecurityConfig` ends with
+  `anyRequest().denyAll()` (fail-closed; only the three OpenAPI/Swagger paths are public);
+  `ApiKeyService` **fails fast at startup** on a key mapped to multiple roles or a duplicated
+  key, treats whitespace-only keys as unset, and never silently picks the first match;
+  exceptions/logs never include the key or its digest (principal is the role only). Added
+  `ApiKeyServiceValidationTest` and unlisted-endpoint-denied tests.
+- **Validation:** full suite **83 tests, 0 failures**; 401/403/2xx enforced per role;
+  unlisted endpoint denied; duplicate/multi-role key configs fail fast; success+denied
+  client-account reporting with filters; existing tests updated to send keys.
+- **Human sign-off:** _<PENDING: Raghavendra to review/approve>_
+
 ---
 
 ## How to read this log going forward

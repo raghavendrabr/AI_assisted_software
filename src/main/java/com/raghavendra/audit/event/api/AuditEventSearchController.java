@@ -74,7 +74,7 @@ public class AuditEventSearchController {
         // Reflect the actual applied page size (after the service's MAX_LIMIT clamp) in the response.
         int appliedLimit = Math.min(effectiveLimit, AuditEventQueryService.MAX_LIMIT);
         EventSearchCriteria criteria = new EventSearchCriteria(
-                actorId, resourceType, resourceId, eventType, from, to, cursor, appliedLimit);
+                actorId, resourceType, resourceId, eventType, null, from, to, cursor, appliedLimit);
 
         EventPage page = queryService.search(criteria);
         List<EventView> views = page.events().stream().map(EventView::from).toList();
