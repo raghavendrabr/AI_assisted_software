@@ -59,6 +59,9 @@ public class SecurityConfig {
                         // Compliance report — COMPLIANCE_READER or ADMIN.
                         .requestMatchers(HttpMethod.GET, "/api/v1/compliance/**")
                             .hasAnyRole(ApiRole.COMPLIANCE_READER.name(), ApiRole.ADMIN.name())
+                        // Bulk export — COMPLIANCE_READER or ADMIN.
+                        .requestMatchers(HttpMethod.GET, "/api/v1/audit/export")
+                            .hasAnyRole(ApiRole.COMPLIANCE_READER.name(), ApiRole.ADMIN.name())
                         // DENY everything not explicitly allowed above. This is a fail-closed
                         // default: a newly added endpoint is denied until an explicit rule
                         // grants access, so it can never be accidentally public.

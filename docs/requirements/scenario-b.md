@@ -1,8 +1,8 @@
 # Scenario B — Extend Your Own System: Retention & Redaction
 
-> **Status update (2026-08-18):** **structured redaction** (ADR 0007) and **retention/archival**
-> (ADR 0008, `ArchiveIntegrationTest`) are now IMPLEMENTED. **Verifiable bulk (signed) export
-> remains design-only** (documented scope boundary below). The analysis below records where the
+> **Status update (2026-08-18):** all three Scenario B capabilities are now IMPLEMENTED —
+> **structured redaction** (ADR 0007), **retention/archival** (ADR 0008), and **Ed25519-signed
+> bulk export** with a standalone verifier (ADR 0009). The analysis below records where the
 > assignment is explicit versus where we made engineering decisions.
 
 ## B.1 Assignment requirements (as given)

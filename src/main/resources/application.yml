@@ -70,9 +70,13 @@ audit:
   compliance:
     client-account-resource-type: ${AUDIT_CLIENT_ACCOUNT_RESOURCE_TYPE:CLIENT_ACCOUNT}
 
-# Placeholders for later steps (export signing) — not consumed yet, no secrets:
-#   audit.export.signing-key-path: ${AUDIT_EXPORT_SIGNING_KEY_PATH:}   # Ed25519 PRIVATE key (never committed)
-#   audit.export.public-key-path:  ${AUDIT_EXPORT_PUBLIC_KEY_PATH:}    # Ed25519 public key (may be committed)
+  # Export signing (Ed25519). The PRIVATE key path comes from the environment / a mounted
+  # secret and is NEVER committed. If unset, the service uses an EPHEMERAL non-production dev key
+  # (a warning is logged) so export works out-of-the-box for local/demo use.
+  export:
+    private-key-path: ${AUDIT_EXPORT_PRIVATE_KEY_PATH:}   # Ed25519 PKCS#8 PEM — never commit the private key
+    public-key-path:  ${AUDIT_EXPORT_PUBLIC_KEY_PATH:}    # Ed25519 X.509 PEM — public key may be committed
+    signing-key-id:   ${AUDIT_EXPORT_SIGNING_KEY_ID:audit-export-key-dev}
 # -----------------------------------------------------------------------------
 
 logging:

@@ -96,6 +96,26 @@ class ApiKeySecurityIntegrationTest {
                 .header("X-API-Key", "test-compliance-key")).hasStatusOk();
         assertThat(mvc.get().uri("/api/v1/compliance/access-report")
                 .header("X-API-Key", "test-compliance-key")).hasStatusOk();
+        // Export: COMPLIANCE_READER allowed (200).
+        assertThat(mvc.get().uri("/api/v1/audit/export?resourceId=acct-1")
+                .header("X-API-Key", "test-compliance-key")).hasStatusOk();
+    }
+
+    @Test
+    void export_requiresComplianceOrAdmin_writerForbidden() {
+        assertThat(mvc.get().uri("/api/v1/audit/export?resourceId=acct-1")
+                .header("X-API-Key", "test-writer-key")).hasStatus(403);
+        assertThat(mvc.get().uri("/api/v1/audit/export?resourceId=acct-1")).hasStatus(401);
+    }
+
+    @Test
+    void export_requiresExactlyOneFilter_neitherOrBoth_returns400() {
+        // Neither resourceId nor actorId → 400.
+        assertThat(mvc.get().uri("/api/v1/audit/export")
+                .header("X-API-Key", "test-compliance-key")).hasStatus(400);
+        // Both → 400.
+        assertThat(mvc.get().uri("/api/v1/audit/export?resourceId=a&actorId=b")
+                .header("X-API-Key", "test-compliance-key")).hasStatus(400);
     }
 
     // ---- fail-closed default: an unlisted endpoint is denied even for ADMIN ------------

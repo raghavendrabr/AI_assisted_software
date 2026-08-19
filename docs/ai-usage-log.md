@@ -533,6 +533,52 @@ below because they are the clearest evidence of engineer-led, AI-accelerated wor
 - **Validation:** full suite **117 tests, 0 failures**.
 - **Human sign-off:** _<PENDING: Raghavendra to review/approve>_
 
+## Session 10 — Ed25519-signed bulk export (Day 1, Commit 10)
+
+### AI-018 — Signed export bundle + standalone verifier (completes Scenario B)
+
+- **Intent / prompt (from the engineer):** Ed25519-signed bulk export and standalone bundle
+  verification.
+- **What the AI produced:** `ExportSigningProperties` + `Ed25519Signer` (private key from an
+  env-mounted PEM; ephemeral non-production dev key fallback with a warning); `ExportBundle`
+  model; `ExportManifestCanonicalizer` (length-prefixed, server+verifier-shared);
+  `ExportService` (builds the signed manifest over active+archive records for a resourceId/
+  actorId filter, REPEATABLE_READ); `ExportController` (`GET /audit/export`, COMPLIANCE_READER/
+  ADMIN); `ExportBundleVerifier` + `ExportVerifyMain` (standalone, no Spring/DB);
+  `scripts/generate-export-keypair.sh`. ADR 0009 records it.
+- **Design:** a filtered subset isn't contiguous, so `previous_hash` can't authenticate membership
+  and a plain bundle hash is recomputable — hence a detached Ed25519 signature over a canonical
+  (length-prefixed) manifest with a dedicated signing key (never the API key). The verifier
+  recomputes each event's content hash over the redaction-stable hash payload and checks order +
+  count + signature. Honest limitation documented: proves the bundle is unchanged, NOT global
+  completeness (needs full chain / Merkle accumulator).
+- **Key hygiene:** private key never committed (`.gitignore` blocks `*.pem`, allows
+  `*_public.pem`); zero-config demo uses an ephemeral dev key; API key never reused for signing.
+- **Verification gaps closed in review (engineer-directed):**
+  1. **Amendment verification** — the verifier now recomputes every exported amendment's content
+     hash, checks it against the stated hash and `manifest.amendmentHashes` in order, enforces
+     ascending amendment sequence + previous-hash linkage for consecutive amendments, and rejects
+     modified/reordered/removed/duplicated amendments.
+  2. **Redaction consistency** — every null redactable field must be backed by a valid REDACTION
+     amendment in the bundle; every present redactable value must match its (eventId+field-bound)
+     commitment.
+  3. **Filter membership** — every exported event must match the signed filterType/filterValue;
+     non-matching injected records are rejected. The endpoint requires exactly one of resourceId/
+     actorId (both/neither → 400).
+  4. **Event structure** — duplicate event ids/sequences rejected; event order must match the
+     signed ordered hash list.
+  5. **Key fail-closed** — the ephemeral dev key is allowed ONLY under an explicit local/test
+     profile; a deployed/default profile with no private key **fails startup**. Documented that
+     the public key must be distributed via a trusted channel and `signingKeyId` alone is not trust.
+- **Accepted / Rejected:** accepted Ed25519 signed-manifest over neighbor-witness/bundleHash;
+  deferred Merkle completeness proofs and KMS integration (documented).
+- **Validation:** full suite **135 tests, 0 failures** (added amendment/redaction/filter/duplicate
+  verifier checks + `Ed25519SignerTest` fail-closed + filter-400): signed bundle verifies offline
+  incl. archived+redacted; modified/reordered/removed event and amendment, redacted-without-
+  amendment, non-matching injected event, duplicate event, tampered manifest, wrong public key all
+  rejected; missing production key fails closed; export COMPLIANCE_READER/ADMIN-gated.
+- **Human sign-off:** _<PENDING: Raghavendra to review/approve>_
+
 ---
 
 ## How to read this log going forward

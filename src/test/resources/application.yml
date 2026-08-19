@@ -1,5 +1,8 @@
 # Test-only configuration. These API keys are NON-PRODUCTION, used solely by the test suite
 # to exercise authentication/authorization. They are not real secrets.
+spring:
+  profiles:
+    active: test   # enables the ephemeral export dev-key fallback (Ed25519Signer fail-closed policy)
 audit:
   security:
     api-keys:
