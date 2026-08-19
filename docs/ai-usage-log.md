@@ -299,6 +299,56 @@ below because they are the clearest evidence of engineer-led, AI-accelerated wor
   - Torn down with `down -v`; `git diff --check` clean; no secrets/artifacts staged.
 - **Human sign-off:** _<PENDING: Raghavendra to review/approve>_
 
+## Session 4 — Canonical serialization & hashing (Day 1, Commit 4)
+
+### AI-012 — Deterministic canonical JSON + SHA-256 content hashing
+
+- **Intent / prompt (from the engineer):** implement deterministic canonical JSON
+  serialization, an explicitly documented protected hash projection, and SHA-256 hashing,
+  with unit tests proving determinism, field-order independence, payload-key-order
+  independence, UTF-8 behavior, null handling, timestamp normalization, and that changing
+  any protected field changes the hash. **No** entities/repositories/APIs/DB
+  writes/search/verification/security/redaction/archival/export.
+- **What the AI produced:** `ProtectedEventProjection` (the explicit protected field set),
+  `CanonicalJsonSerializer` (own deterministic writer; Jackson used only to parse the
+  payload tree), `Sha256Hasher` (content hash + genesis-hash constant), and
+  `CanonicalHashTest` (16 unit tests). ADR 0003 records the exact projection,
+  canonicalization rules, and hash formula.
+- **Exact formula recorded (ADR 0003):**
+  `content_hash = SHA-256(UTF-8(canonicalize(projection)))`.
+  Canonicalization: fixed non-alphabetical top-level order; payload object keys sorted by
+  `String.compareTo` recursively (array order preserved); UTF-8; explicit `null` token;
+  timestamps → UTC **truncated to microseconds**, formatted `uuuu-MM-dd'T'HH:mm:ss.SSSSSS'Z'`
+  (6 digits); `previousHash` rendered as **64 lowercase hex chars** (null for genesis); no
+  insignificant whitespace; numbers via `BigDecimal.stripTrailingZeros().toPlainString()`.
+- **Jackson-3 note:** Spring Boot 4.1 ships Jackson 3.x whose base package is
+  `tools.jackson.*` (not `com.fasterxml.jackson.*`); the serializer imports accordingly.
+
+- **Integrity corrections made in review (engineer-directed):**
+  1. **Removed the `SHA-256("AUDIT_LOG_GENESIS_V1")` genesis-hash convention** — it
+     contradicted the already-migrated V1 schema. The approved convention (empty head =
+     seq 0/null; first event = seq 1/`previousHash` null → `"previousHash":null`; later
+     events carry the previous 32-byte content hash) is now enforced in
+     `ProtectedEventProjection` and documented in ADR 0003. `genesisPreviousHash()`/
+     `GENESIS_LABEL` deleted from `Sha256Hasher`.
+  2. **Timestamp precision made PostgreSQL-safe** — was nanosecond (`.nnnnnnnnn`); now UTC +
+     **truncate to microseconds** + `.SSSSSS` (6 digits), so the canonical form is unchanged
+     after a `TIMESTAMPTZ` persist/reread. Documented that the append service must persist the
+     same microsecond-truncated instant it hashed.
+  3. **`previousHash` encoding made explicit** — projection now holds `byte[]` (32 bytes,
+     validated); the serializer renders exactly 64 lowercase hex chars; null stays the JSON
+     null token. Encoding owned solely by the serializer.
+- **Added tests (now 21):** equal offsets canonicalize identically; sub-microsecond
+  differences collapse to the same hash; a 1-µs difference changes the hash; persist/reread
+  round-trip is stable; `previousHash` = 64 lowercase hex; genesis = null token.
+- **Accepted / Rejected:** accepted a bespoke canonical writer over ObjectMapper default
+  ordering; documented UTF-16 code-unit key ordering as a `schemaVersion`-gated limitation.
+  Rejected the genesis-hash sentinel and nanosecond timestamp precision. No storage/API/
+  security code added (out of scope).
+- **Validation:** `./mvnw test -Dtest=CanonicalHashTest` → **21 tests, 0 failures**; full
+  suite result recorded below.
+- **Human sign-off:** _<PENDING: Raghavendra to review/approve>_
+
 ---
 
 ## How to read this log going forward
