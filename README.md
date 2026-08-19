@@ -31,9 +31,10 @@ correctness, design, and authorship.
 | Security | **API-key auth** (`X-API-Key`) → server-side roles WRITER / COMPLIANCE_READER / ADMIN, per-endpoint authorization (ADR 0006) |
 | Compliance (Scenario C slice) | `GET /api/v1/compliance/access-report` — client-account access (success + denied), actor/account/outcome/time filters |
 | Redaction (Scenario B) | `POST /api/v1/audit/events/{seq}/redact` (ADMIN) — salted-commitment redaction + amendment chain; chain stays intact (ADR 0007) |
-| Archival / export | **Not started** (remaining Scenario B) |
-| Tests | 92 total — hashing (22), V1 schema (11), append (12), search (8), verify (10), redaction (8), security (15), compliance (5), handler (2), context (1) |
-| Runnable end-to-end | **Scenario A + redaction + compliance** — append, query, verify, tamper-detect, redact (chain still verifies), report |
+| Retention/archival (Scenario B) | `POST /api/v1/audit/retention/archive` (ADMIN) — move oldest prefix to archive + manifest + ARCHIVE amendment; verify reads active+archive as one chain (ADR 0008) |
+| Verifiable export | **Not started** (remaining Scenario B) |
+| Tests | 117 total — hashing (28), V1 schema (11), append (12), search (8), verify (10), redaction (19), retention (19), security (15), compliance (5), handler (2), context (1) |
+| Runnable end-to-end | **Scenario A + redaction + retention + compliance** — append, query, verify, tamper-detect, redact, archive (chain still verifies), report |
 
 API examples and test-status badges will be added **only once the corresponding code
 exists**. They are intentionally omitted now to avoid implying functionality that has

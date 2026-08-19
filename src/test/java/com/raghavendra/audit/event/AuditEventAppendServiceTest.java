@@ -42,9 +42,15 @@ class AuditEventAppendServiceTest {
 
     @Autowired
     private AuditChainHeadRepository chainHeadRepository;
+    @Autowired private com.raghavendra.audit.amendment.domain.AuditAmendmentRepository amendmentRepository;
+    @Autowired private com.raghavendra.audit.retention.domain.ArchiveManifestRepository manifestRepository;
+    @Autowired private com.raghavendra.audit.retention.domain.AuditEventArchiveRepository archiveRepository;
 
     @BeforeEach
     void resetChain() {
+        amendmentRepository.deleteAll();
+        manifestRepository.deleteAll();
+        archiveRepository.deleteAll();
         eventRepository.deleteAll();
         chainHeadRepository.findById(AuditChainHeadEntity.SINGLETON_ID)
                 .ifPresent(h -> {

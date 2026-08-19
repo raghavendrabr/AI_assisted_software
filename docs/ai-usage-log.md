@@ -493,6 +493,46 @@ below because they are the clearest evidence of engineer-led, AI-accelerated wor
   (6) + 3 integration checks: concurrent-one-succeeds, atomic-rollback, no-plaintext-in-amendment).
 - **Human sign-off:** _<PENDING: Raghavendra to review/approve>_
 
+## Session 9 — Retention & archival (Day 1, Commit 9)
+
+### AI-017 — Archive oldest prefix + merged active/archive verification
+
+- **Intent / prompt (from the engineer):** Flyway V3 (`audit_event_archive` + `archive_manifest`);
+  archive only a contiguous oldest prefix; copy before delete; preserve sequence/hashes/payloads/
+  timestamps exactly; canonical manifest (manifestId/from/to/count/first/last/archivedAt/
+  authorizedBy); ARCHIVE amendment binding the manifest hash+range; atomic copy→manifest→amendment
+  →delete; ADMIN-only endpoint; verification reads active+archived as one ordered chain; search/
+  compliance include archived (documented includeArchived); redaction works on archived; no
+  amendment FK to active-only; detect missing/modified/duplicated archived record + manifest
+  mismatches; test rollback + concurrent archive; document retention assumptions/limitations.
+  **No signed export in this commit.**
+- **What the AI produced:** V3 migration; `AuditEventArchiveEntity`/`ArchiveManifestEntity` + repos;
+  `ArchiveManifestHasher` (domain-separated formula); `ArchiveService` (head-locked atomic
+  copy→manifest→amendment→delete of the contiguous oldest prefix); `RetentionController`
+  (`POST /audit/retention/archive`, ADMIN); verifier rewritten to merge active+archive via a
+  source-agnostic `VerifiableEvent` and to check manifests (`ARCHIVE_PROOF_MISMATCH`); search/
+  compliance `includeArchived` via a source-agnostic `EventRow`; redaction extended to update the
+  archive table. ADR 0008 records it.
+- **Design confirmations:** amendment `target_sequence_number` has no physical FK (correct — rows
+  move between tables); ARCHIVE amendment binds `{manifestId, manifestHash, from, to, count}`;
+  copy strictly before delete; whole operation atomic and head-locked.
+- **Accepted / Rejected:** accepted contiguous-oldest-prefix archival (no holes) and manual
+  trigger, documented as limitations; deferred scheduled retention, cold storage, and hard
+  deletion. Signed export explicitly deferred to Commit 10.
+- **Test-isolation:** all event-clearing test resets now also clear archive/manifest/amendment so
+  rows don't leak across the shared container (and moved sequences don't collide with a reset head).
+- **Manifest encoding hardened:** switched the manifest hash to **length-prefixed** components
+  (8-byte big-endian length before each field's UTF-8 bytes) — unambiguous regardless of field
+  content, removing the earlier reliance on `authorizedBy` not containing `0x1F`. Documented in
+  ADR 0008; unit-tested (`ArchiveManifestHasherTest`).
+- **Extra tests added in review:** search across the archive boundary (default excludes archived;
+  includeArchived merges once each, ordered; cursor pagination correct across the boundary);
+  compliance report includes an archived access exactly once; duplicated sequence across
+  active+archive detected; failed archive rolls back leaving active/archive/manifest/amendment and
+  both chain-head tips unchanged.
+- **Validation:** full suite **117 tests, 0 failures**.
+- **Human sign-off:** _<PENDING: Raghavendra to review/approve>_
+
 ---
 
 ## How to read this log going forward

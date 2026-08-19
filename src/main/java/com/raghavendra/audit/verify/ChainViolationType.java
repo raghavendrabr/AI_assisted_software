@@ -31,5 +31,8 @@ public enum ChainViolationType {
     REDACTION_UNBACKED,
 
     /** A present redactable value does not match its stored commitment (value/salt tampered). */
-    COMMITMENT_MISMATCH
+    COMMITMENT_MISMATCH,
+
+    /** An archive manifest's count/range/hash does not match its archived records or ARCHIVE amendment. */
+    ARCHIVE_PROOF_MISMATCH
 }

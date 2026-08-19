@@ -44,6 +44,9 @@ public class SecurityConfig {
                         // specific path wins.)
                         .requestMatchers(HttpMethod.POST, "/api/v1/audit/events/*/redact")
                             .hasRole(ApiRole.ADMIN.name())
+                        // Retention/archival — ADMIN only.
+                        .requestMatchers(HttpMethod.POST, "/api/v1/audit/retention/**")
+                            .hasRole(ApiRole.ADMIN.name())
                         // Write API — WRITER or ADMIN.
                         .requestMatchers(HttpMethod.POST, "/api/v1/audit/events")
                             .hasAnyRole(ApiRole.WRITER.name(), ApiRole.ADMIN.name())

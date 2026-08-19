@@ -1,7 +1,7 @@
 package com.raghavendra.audit.compliance;
 
 import com.raghavendra.audit.common.hash.HexFormatUtil;
-import com.raghavendra.audit.event.domain.AuditEventEntity;
+import com.raghavendra.audit.event.application.EventRow;
 
 import java.time.OffsetDateTime;
 import java.util.UUID;
@@ -22,21 +22,23 @@ public record AccessReportEntry(
         String businessReason,  // why
         OffsetDateTime accessedAt,   // business time (UTC)
         OffsetDateTime recordedAt,   // ingestion time (UTC)
-        String contentHash
+        String contentHash,
+        boolean archived
 ) {
-    public static AccessReportEntry from(AuditEventEntity e) {
+    public static AccessReportEntry from(EventRow e) {
         return new AccessReportEntry(
-                e.getEventId(),
-                e.getSequenceNumber(),
-                e.getActorId(),
-                e.getActorType(),
-                e.getResourceId(),
-                e.getAction(),
-                e.getOutcome(),
-                e.getBusinessReason(),
-                e.getEventTimestamp(),
-                e.getRecordedAt(),
-                HexFormatUtil.toLowerHex(e.getContentHash())
+                e.eventId(),
+                e.sequenceNumber(),
+                e.actorId(),
+                e.actorType(),
+                e.resourceId(),
+                e.eventType(),
+                e.outcome(),
+                e.businessReason(),
+                e.eventTimestamp(),
+                e.recordedAt(),
+                HexFormatUtil.toLowerHex(e.contentHash()),
+                e.archived()
         );
     }
 }

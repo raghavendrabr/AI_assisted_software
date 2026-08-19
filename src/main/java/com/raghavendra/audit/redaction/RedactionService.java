@@ -6,8 +6,9 @@ import com.raghavendra.audit.common.hash.ProtectedAmendmentProjection;
 import com.raghavendra.audit.common.hash.Sha256Hasher;
 import com.raghavendra.audit.event.domain.AuditChainHeadEntity;
 import com.raghavendra.audit.event.domain.AuditChainHeadRepository;
-import com.raghavendra.audit.event.domain.AuditEventEntity;
 import com.raghavendra.audit.event.domain.AuditEventRepository;
+import com.raghavendra.audit.retention.domain.AuditEventArchiveEntity;
+import com.raghavendra.audit.retention.domain.AuditEventArchiveRepository;
 import jakarta.persistence.EntityManager;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -44,6 +45,7 @@ public class RedactionService {
     public static final int SCHEMA_VERSION = 1;
 
     private final AuditEventRepository eventRepository;
+    private final AuditEventArchiveRepository archiveRepository;
     private final AuditAmendmentRepository amendmentRepository;
     private final AuditChainHeadRepository chainHeadRepository;
     private final Sha256Hasher hasher;
@@ -52,12 +54,14 @@ public class RedactionService {
     private final ObjectMapper mapper = new ObjectMapper();
 
     public RedactionService(AuditEventRepository eventRepository,
+                            AuditEventArchiveRepository archiveRepository,
                             AuditAmendmentRepository amendmentRepository,
                             AuditChainHeadRepository chainHeadRepository,
                             Sha256Hasher hasher,
                             Clock clock,
                             EntityManager entityManager) {
         this.eventRepository = eventRepository;
+        this.archiveRepository = archiveRepository;
         this.amendmentRepository = amendmentRepository;
         this.chainHeadRepository = chainHeadRepository;
         this.hasher = hasher;
@@ -67,8 +71,11 @@ public class RedactionService {
 
     @Transactional
     public AuditAmendmentEntity redactField(long sequenceNumber, String field, String actorId) {
-        // Existence check first (clean 404 without taking the lock for a bad target).
-        if (eventRepository.findBySequenceNumber(sequenceNumber).isEmpty()) {
+        // Existence check first (clean 404 without taking the lock for a bad target). Redaction
+        // works for ACTIVE and ARCHIVED events, so check both tables.
+        boolean inActive = eventRepository.findBySequenceNumber(sequenceNumber).isPresent();
+        boolean inArchive = archiveRepository.existsBySequenceNumber(sequenceNumber);
+        if (!inActive && !inArchive) {
             throw new RedactionException("No audit event with sequence " + sequenceNumber, true);
         }
 
@@ -80,13 +87,20 @@ public class RedactionService {
 
         // Clear the persistence context so the post-lock read observes the WINNER's committed
         // payload (a redaction commits via a native UPDATE the first-level cache can't see).
-        // Without this, a lock-loser would re-read its own stale cached entity.
         entityManager.clear();
-        AuditEventEntity event = eventRepository.findBySequenceNumber(sequenceNumber)
-                .orElseThrow(() -> new RedactionException(
-                        "No audit event with sequence " + sequenceNumber, true));
 
-        ObjectNode payload = parsePayload(event.getPayload());
+        // Read the current payload from whichever table holds the event (archival may have moved
+        // it between the pre-lock check and now, but the sequence is stable either way).
+        boolean archived = archiveRepository.existsBySequenceNumber(sequenceNumber);
+        String storedPayload = archived
+                ? archiveRepository.findBySequenceNumber(sequenceNumber)
+                    .orElseThrow(() -> new RedactionException("No audit event with sequence " + sequenceNumber, true))
+                    .getPayload()
+                : eventRepository.findBySequenceNumber(sequenceNumber)
+                    .orElseThrow(() -> new RedactionException("No audit event with sequence " + sequenceNumber, true))
+                    .getPayload();
+
+        ObjectNode payload = parsePayload(storedPayload);
         JsonNode fieldNode = payload.get(field);
         if (!isRedactableEnvelope(fieldNode)) {
             throw new RedactionException(
@@ -123,8 +137,13 @@ public class RedactionService {
         chainHeadRepository.save(head);
 
         // Null the plaintext value (only permitted base-event mutation), keeping salt+commitment.
+        // Write to whichever table currently holds the event (active or archive).
         envelope.set("value", mapper.nullNode());
-        eventRepository.updatePayloadBySequence(sequenceNumber, payload.toString());
+        if (archived) {
+            archiveRepository.updatePayloadBySequence(sequenceNumber, payload.toString());
+        } else {
+            eventRepository.updatePayloadBySequence(sequenceNumber, payload.toString());
+        }
 
         return saved;
     }

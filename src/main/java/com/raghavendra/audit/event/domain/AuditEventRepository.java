@@ -29,6 +29,14 @@ public interface AuditEventRepository
     /** All events ordered by chain position — used by the verifier. */
     List<AuditEventEntity> findAllByOrderBySequenceNumberAsc();
 
+    /** Active events ordered by sequence (oldest first) — used to select an archivable prefix. */
+    List<AuditEventEntity> findByOrderBySequenceNumberAsc();
+
+    /** Delete a contiguous active sequence range [from, to] (used after copying to archive). */
+    @Modifying
+    @Query("delete from AuditEventEntity e where e.sequenceNumber between :from and :to")
+    int deleteBySequenceRange(@Param("from") long from, @Param("to") long to);
+
     /**
      * Redaction: overwrite the stored payload JSONB for one event. This is the ONLY permitted
      * mutation of a base event, and it only ever nulls a redactable field's plaintext value

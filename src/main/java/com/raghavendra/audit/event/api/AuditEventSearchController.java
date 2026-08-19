@@ -54,7 +54,8 @@ public class AuditEventSearchController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime to,
             @RequestParam(required = false) Long cursor,
-            @RequestParam(required = false) Integer limit) {
+            @RequestParam(required = false) Integer limit,
+            @RequestParam(required = false, defaultValue = "false") boolean includeArchived) {
 
         // Validate limit: absent → default; explicit non-positive → 400.
         int effectiveLimit;
@@ -74,14 +75,15 @@ public class AuditEventSearchController {
         // Reflect the actual applied page size (after the service's MAX_LIMIT clamp) in the response.
         int appliedLimit = Math.min(effectiveLimit, AuditEventQueryService.MAX_LIMIT);
         EventSearchCriteria criteria = new EventSearchCriteria(
-                actorId, resourceType, resourceId, eventType, null, from, to, cursor, appliedLimit);
+                actorId, resourceType, resourceId, eventType, null, from, to, cursor, appliedLimit,
+                includeArchived);
 
         EventPage page = queryService.search(criteria);
         List<EventView> views = page.events().stream().map(EventView::from).toList();
 
         // nextCursor: the last returned event's sequence, but ONLY when another page exists.
         Long nextCursor = (page.hasMore() && !page.events().isEmpty())
-                ? page.events().get(page.events().size() - 1).getSequenceNumber()
+                ? page.events().get(page.events().size() - 1).sequenceNumber()
                 : null;
 
         return ResponseEntity.ok(new EventPageResponse(views, nextCursor, appliedLimit));

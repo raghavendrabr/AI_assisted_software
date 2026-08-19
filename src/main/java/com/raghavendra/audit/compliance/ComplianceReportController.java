@@ -38,7 +38,8 @@ public class ComplianceReportController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) OffsetDateTime to,
             @RequestParam(required = false) Long cursor,
-            @RequestParam(required = false) Integer limit) {
+            @RequestParam(required = false) Integer limit,
+            @RequestParam(required = false, defaultValue = "true") boolean includeArchived) {
 
         int effectiveLimit;
         if (limit == null) {
@@ -53,7 +54,7 @@ public class ComplianceReportController {
             throw new InvalidSearchRequestException("'from' must be earlier than 'to'");
         }
 
-        return ResponseEntity.ok(
-                reportService.report(actorId, accountId, outcome, from, to, cursor, effectiveLimit));
+        return ResponseEntity.ok(reportService.report(
+                actorId, accountId, outcome, from, to, cursor, effectiveLimit, includeArchived));
     }
 }

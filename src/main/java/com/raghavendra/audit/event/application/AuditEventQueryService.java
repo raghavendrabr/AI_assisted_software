@@ -2,6 +2,9 @@ package com.raghavendra.audit.event.application;
 
 import com.raghavendra.audit.event.domain.AuditEventEntity;
 import com.raghavendra.audit.event.domain.AuditEventRepository;
+import com.raghavendra.audit.retention.domain.AuditEventArchiveEntity;
+import com.raghavendra.audit.retention.domain.AuditEventArchiveRepository;
+import jakarta.persistence.criteria.Path;
 import jakarta.persistence.criteria.Predicate;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -10,45 +13,59 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 
 /**
  * Read-only, bounded, cursor-paginated search over audit events.
  *
- * <p><strong>Ordering:</strong> always by {@code sequenceNumber} ascending — a monotonic,
- * insert-stable key.
+ * <p>Ordering is always by {@code sequenceNumber} ascending — a monotonic, insert-stable key —
+ * so cursor pagination ({@code afterSequence}) is stable under concurrent inserts. Page size is
+ * clamped to {@link #MAX_LIMIT}; the fetch uses limit + 1 to report {@code hasMore}.
  *
- * <p><strong>Cursor:</strong> {@code afterSequence} means "return rows with
- * {@code sequenceNumber > afterSequence}"; combined with ascending order this yields stable
- * pages even while new events are appended concurrently (offset pagination would shift).
+ * <p><strong>Archived events:</strong> by default the search returns only ACTIVE events. When
+ * {@code includeArchived} is true, archived events (moved to {@code audit_event_archive} by
+ * retention) are merged into the results and ordered together by sequence — so a report can span
+ * the full history. This is a documented, explicit behavior (default false), not silent omission.
  *
- * <p><strong>Bounded &amp; has-more via limit + 1:</strong> the query fetches at most
- * {@code limit + 1} rows; it returns at most {@code limit} and reports {@code hasMore = true}
- * only when the extra row was present (proving another page exists). The page size is clamped
- * to {@link #MAX_LIMIT}. A non-positive limit is rejected by validation upstream (the
- * controller returns 400), not silently normalized.
- *
- * <p><strong>eventType:</strong> the {@code eventType} filter matches the stored
- * {@code action} column (the write API accepts {@code eventType} and persists it as
- * {@code action}).
+ * <p>{@code eventType} filters the stored {@code action} column.
  */
 @Service
 public class AuditEventQueryService {
 
-    /** Hard upper bound on page size, regardless of the requested limit. */
     public static final int MAX_LIMIT = 200;
 
     private final AuditEventRepository repository;
+    private final AuditEventArchiveRepository archiveRepository;
 
-    public AuditEventQueryService(AuditEventRepository repository) {
+    public AuditEventQueryService(AuditEventRepository repository,
+                                  AuditEventArchiveRepository archiveRepository) {
         this.repository = repository;
+        this.archiveRepository = archiveRepository;
     }
 
     @Transactional(readOnly = true)
     public EventPage search(EventSearchCriteria c) {
-        int limit = Math.min(c.limit(), MAX_LIMIT); // c.limit() already validated > 0 upstream
+        int limit = Math.min(c.limit(), MAX_LIMIT);
+        PageRequest page = PageRequest.of(0, limit + 1, Sort.by(Sort.Direction.ASC, "sequenceNumber"));
 
-        Specification<AuditEventEntity> spec = (root, query, cb) -> {
+        List<EventRow> rows = new ArrayList<>();
+        repository.findAll(this.<AuditEventEntity>spec(c), page).forEach(e -> rows.add(EventRow.of(e)));
+
+        if (c.includeArchived()) {
+            archiveRepository.findAll(this.<AuditEventArchiveEntity>spec(c), page)
+                    .forEach(e -> rows.add(EventRow.of(e)));
+            rows.sort(Comparator.comparingLong(EventRow::sequenceNumber));
+        }
+
+        boolean hasMore = rows.size() > limit;
+        List<EventRow> events = hasMore ? new ArrayList<>(rows.subList(0, limit)) : rows;
+        return new EventPage(events, hasMore);
+    }
+
+    /** Builds the filter specification generically for either the active or archive entity. */
+    private <T> Specification<T> spec(EventSearchCriteria c) {
+        return (root, query, cb) -> {
             List<Predicate> ps = new ArrayList<>();
             if (c.actorId() != null) {
                 ps.add(cb.equal(root.get("actorId"), c.actorId()));
@@ -60,30 +77,24 @@ public class AuditEventQueryService {
                 ps.add(cb.equal(root.get("resourceId"), c.resourceId()));
             }
             if (c.eventType() != null) {
-                // eventType filters the stored `action` column.
                 ps.add(cb.equal(root.get("action"), c.eventType()));
             }
             if (c.outcome() != null) {
                 ps.add(cb.equal(root.get("outcome"), c.outcome()));
             }
             if (c.from() != null) {
-                ps.add(cb.greaterThanOrEqualTo(root.get("eventTimestamp"), c.from()));
+                Path<java.time.OffsetDateTime> ts = root.get("eventTimestamp");
+                ps.add(cb.greaterThanOrEqualTo(ts, c.from()));
             }
             if (c.to() != null) {
-                ps.add(cb.lessThan(root.get("eventTimestamp"), c.to()));
+                Path<java.time.OffsetDateTime> ts = root.get("eventTimestamp");
+                ps.add(cb.lessThan(ts, c.to()));
             }
             if (c.afterSequence() != null) {
-                ps.add(cb.greaterThan(root.get("sequenceNumber"), c.afterSequence()));
+                Path<Long> seq = root.get("sequenceNumber");
+                ps.add(cb.greaterThan(seq, c.afterSequence()));
             }
             return cb.and(ps.toArray(new Predicate[0]));
         };
-
-        // Fetch limit + 1 to detect whether a further page exists.
-        PageRequest page = PageRequest.of(0, limit + 1, Sort.by(Sort.Direction.ASC, "sequenceNumber"));
-        List<AuditEventEntity> rows = repository.findAll(spec, page).getContent();
-
-        boolean hasMore = rows.size() > limit;
-        List<AuditEventEntity> events = hasMore ? rows.subList(0, limit) : rows;
-        return new EventPage(events, hasMore);
     }
 }

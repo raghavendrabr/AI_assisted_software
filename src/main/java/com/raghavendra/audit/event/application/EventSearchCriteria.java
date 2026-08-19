@@ -15,6 +15,7 @@ import java.time.OffsetDateTime;
  * @param to           exclusive upper bound on eventTimestamp
  * @param afterSequence cursor: return only events with sequenceNumber strictly greater
  * @param limit        maximum rows to return (bounded by the service)
+ * @param includeArchived when true, archived events are merged into the results; default false
  */
 public record EventSearchCriteria(
         String actorId,
@@ -25,6 +26,7 @@ public record EventSearchCriteria(
         OffsetDateTime from,
         OffsetDateTime to,
         Long afterSequence,
-        int limit
+        int limit,
+        boolean includeArchived
 ) {
 }

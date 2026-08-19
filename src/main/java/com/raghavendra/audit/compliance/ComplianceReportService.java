@@ -31,12 +31,12 @@ public class ComplianceReportService {
 
     public AccessReportResponse report(String actorId, String accountId, String outcome,
                                        OffsetDateTime from, OffsetDateTime to,
-                                       Long cursor, int limit) {
+                                       Long cursor, int limit, boolean includeArchived) {
         String resourceType = properties.clientAccountResourceType();
 
         EventSearchCriteria criteria = new EventSearchCriteria(
                 actorId, resourceType, accountId, /* eventType */ null, outcome,
-                from, to, cursor, limit);
+                from, to, cursor, limit, includeArchived);
 
         EventPage page = queryService.search(criteria);
         List<AccessReportEntry> entries = page.events().stream()
@@ -44,7 +44,7 @@ public class ComplianceReportService {
                 .toList();
 
         Long nextCursor = (page.hasMore() && !page.events().isEmpty())
-                ? page.events().get(page.events().size() - 1).getSequenceNumber()
+                ? page.events().get(page.events().size() - 1).sequenceNumber()
                 : null;
 
         return new AccessReportResponse(

@@ -1,10 +1,9 @@
 # Scenario B — Extend Your Own System: Retention & Redaction
 
-> **Status update (2026-08-18):** the **structured redaction** slice is now IMPLEMENTED
-> (amendment chain + salted-commitment redaction; see ADR 0007 and `RedactionIntegrationTest`).
-> **Retention/archival and verifiable bulk export remain design-only** (documented scope
-> boundary below). The analysis below records where the assignment is explicit versus where we
-> made engineering decisions.
+> **Status update (2026-08-18):** **structured redaction** (ADR 0007) and **retention/archival**
+> (ADR 0008, `ArchiveIntegrationTest`) are now IMPLEMENTED. **Verifiable bulk (signed) export
+> remains design-only** (documented scope boundary below). The analysis below records where the
+> assignment is explicit versus where we made engineering decisions.
 
 ## B.1 Assignment requirements (as given)
 

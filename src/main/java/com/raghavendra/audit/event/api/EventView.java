@@ -1,6 +1,7 @@
 package com.raghavendra.audit.event.api;
 
 import com.raghavendra.audit.common.hash.HexFormatUtil;
+import com.raghavendra.audit.event.application.EventRow;
 import com.raghavendra.audit.event.domain.AuditEventEntity;
 
 import java.time.OffsetDateTime;
@@ -25,25 +26,31 @@ public record EventView(
         int schemaVersion,
         String payload,
         String previousHash,
-        String contentHash
+        String contentHash,
+        boolean archived
 ) {
-    public static EventView from(AuditEventEntity e) {
+    public static EventView from(EventRow e) {
         return new EventView(
-                e.getEventId(),
-                e.getSequenceNumber(),
-                e.getAction(),
-                e.getActorId(),
-                e.getActorType(),
-                e.getResourceType(),
-                e.getResourceId(),
-                e.getOutcome(),
-                e.getBusinessReason(),
-                e.getEventTimestamp(),
-                e.getRecordedAt(),
-                e.getSchemaVersion(),
-                e.getPayload(),
-                e.getPreviousHash() == null ? null : HexFormatUtil.toLowerHex(e.getPreviousHash()),
-                HexFormatUtil.toLowerHex(e.getContentHash())
+                e.eventId(),
+                e.sequenceNumber(),
+                e.eventType(),
+                e.actorId(),
+                e.actorType(),
+                e.resourceType(),
+                e.resourceId(),
+                e.outcome(),
+                e.businessReason(),
+                e.eventTimestamp(),
+                e.recordedAt(),
+                e.schemaVersion(),
+                e.payload(),
+                e.previousHash() == null ? null : HexFormatUtil.toLowerHex(e.previousHash()),
+                HexFormatUtil.toLowerHex(e.contentHash()),
+                e.archived()
         );
+    }
+
+    public static EventView from(AuditEventEntity e) {
+        return from(EventRow.of(e));
     }
 }

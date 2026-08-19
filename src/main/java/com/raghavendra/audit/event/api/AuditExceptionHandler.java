@@ -2,6 +2,7 @@ package com.raghavendra.audit.event.api;
 
 import com.raghavendra.audit.event.application.DuplicateEventIdException;
 import com.raghavendra.audit.redaction.RedactionException;
+import com.raghavendra.audit.retention.ArchiveException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -52,6 +53,13 @@ public class AuditExceptionHandler {
         HttpStatus status = ex.isNotFound() ? HttpStatus.NOT_FOUND : HttpStatus.BAD_REQUEST;
         return ResponseEntity.status(status).body(
                 ApiError.of(status.value(), status.getReasonPhrase(), ex.getMessage(), List.of()));
+    }
+
+    /** Archival failures (nothing eligible) → 400. */
+    @ExceptionHandler(ArchiveException.class)
+    public ResponseEntity<ApiError> handleArchive(ArchiveException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(
+                ApiError.of(HttpStatus.BAD_REQUEST.value(), "Bad Request", ex.getMessage(), List.of()));
     }
 
     /**
