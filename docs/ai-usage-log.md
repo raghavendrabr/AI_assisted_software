@@ -349,6 +349,35 @@ below because they are the clearest evidence of engineer-led, AI-accelerated wor
   suite result recorded below.
 - **Human sign-off:** _<PENDING: Raghavendra to review/approve>_
 
+## Session 5 — Transactional append & write API (Day 1, Commit 5)
+
+### AI-013 — Append pipeline (entities, service, controller, tests)
+
+- **Intent / prompt (from the engineer):** JPA entities + repositories; DTOs + validation;
+  transactional append using `SELECT ... FOR UPDATE`; persist the exact microsecond-normalized
+  timestamps used for hashing; `POST /api/v1/audit/events`; exception handling; and append,
+  rollback, duplicate-ID, and concurrent-append integration tests. No read/verify/security
+  (real)/redaction/archival/export.
+- **What the AI produced:** `AuditEventEntity`, `AuditChainHeadEntity` (+ `resetToEmpty` for
+  test fixtures), `AuditEventRepository`, `AuditChainHeadRepository`
+  (`findAndLockSingleton` = PESSIMISTIC_WRITE), `AppendEventRequest`/`AppendEventResponse`
+  DTOs with Bean Validation, `AuditEventAppendService` (locked-head transactional append),
+  `AuditEventController` (`POST` only), `AuditExceptionHandler` + `ApiError`, `HexFormatUtil`,
+  `HashingConfig`/`TimeConfig` beans, a temporary permit-all `SecurityFilterChain`, and
+  integration tests. ADR 0004 records the design.
+- **Timestamp integrity:** the service normalizes both timestamps to UTC + microseconds and
+  uses the SAME values for hashing and persistence (a `Clock` bean is injected for testability).
+- **Build findings (honest, in ADR 0004):** Spring Boot 4 removed `TestRestTemplate` (switched
+  to `MockMvcTester`) and moved `@AutoConfigureMockMvc` into the dedicated
+  `spring-boot-webmvc-test` module (added as a test dependency). Same per-technology module
+  split pattern as the earlier Flyway finding.
+- **Accepted / Rejected:** accepted head-lock serialization (correctness over throughput,
+  documented); accepted a temporary permit-all security config as an explicit boundary until
+  the real API-key/role filter. No read/verify/redaction/archival/export added (out of scope).
+- **Validation:** full suite **43 tests, 0 failures**, incl. 25-way concurrent append →
+  gap-free strictly-increasing linked chain; duplicate id → 409 with no chain advance.
+- **Human sign-off:** _<PENDING: Raghavendra to review/approve>_
+
 ---
 
 ## How to read this log going forward

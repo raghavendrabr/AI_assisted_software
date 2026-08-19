@@ -193,15 +193,7 @@ public final class CanonicalJsonSerializer {
      * inside the canonical form. (Length is guaranteed 32 by {@link ProtectedEventProjection}.)
      */
     private String hexOrNull(byte[] hash) {
-        if (hash == null) {
-            return null;
-        }
-        StringBuilder sb = new StringBuilder(hash.length * 2);
-        for (byte b : hash) {
-            sb.append(Character.forDigit((b >> 4) & 0xF, 16));
-            sb.append(Character.forDigit(b & 0xF, 16));
-        }
-        return sb.toString();
+        return hash == null ? null : HexFormatUtil.toLowerHex(hash);
     }
 
     // ---- low-level JSON writing --------------------------------------------------------

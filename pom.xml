@@ -126,6 +126,13 @@
             <scope>test</scope>
         </dependency>
         <dependency>
+            <!-- Spring Boot 4.x split the web-mvc test slice (MockMvc / MockMvcTester,
+                 @AutoConfigureMockMvc) into this dedicated module. See ADR 0004. -->
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-webmvc-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
             <!--
               Testcontainers PostgreSQL module. NOTE: Testcontainers 2.x RENAMED the
               module coordinates from `org.testcontainers:postgresql` (1.x) to

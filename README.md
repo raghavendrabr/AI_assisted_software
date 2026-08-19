@@ -23,10 +23,13 @@ correctness, design, and authorship.
 | Requirement analysis & assumptions | Done (docs) |
 | Design & decision records | In progress (`docs/decisions/` — ADR 0001 versions, ADR 0002 schema) |
 | Build + local runtime scaffolding | Done (`pom.xml`, entry point, config, Compose, Maven Wrapper) |
-| Database schema / Flyway migrations | **V1 only** — `audit_event` + `audit_chain_head` tables + seed row |
-| APIs / entities / hash-chain / business logic | **Not started** (no entities, repositories, services, hashing, or endpoints) |
-| Tests | Context-load check + **V1 schema integration test** |
-| Runnable end-to-end | **Not yet** (the app starts and creates the schema, but has no functional endpoints) |
+| Database schema / Flyway migrations | **V1** — `audit_event` + `audit_chain_head` tables + seed row |
+| Hashing | Canonical serialization + SHA-256 content hash (ADR 0003) |
+| Write API | `POST /api/v1/audit/events` — transactional append, `SELECT ... FOR UPDATE` chain lock (ADR 0004) |
+| Read / verify / redaction / archival / export | **Not started** |
+| Security | **Temporary permit-all** (real API-key/role auth is a later step) |
+| Tests | Context-load + V1 schema + hashing (22) + append/concurrency integration (9) |
+| Runnable end-to-end | **Partially** — the app starts, applies V1, and accepts appends; no query/verify yet |
 
 API examples and test-status badges will be added **only once the corresponding code
 exists**. They are intentionally omitted now to avoid implying functionality that has
