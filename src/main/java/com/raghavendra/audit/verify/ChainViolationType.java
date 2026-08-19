@@ -22,5 +22,14 @@ public enum ChainViolationType {
     SEQUENCE_GAP,
 
     /** The audit_chain_head row does not match the actual chain tip (sequence or hash). */
-    CHAIN_HEAD_MISMATCH
+    CHAIN_HEAD_MISMATCH,
+
+    /** An amendment record's recomputed content hash / linkage is broken. */
+    AMENDMENT_CHAIN_BROKEN,
+
+    /** A redactable field's plaintext is null but no authorized REDACTION amendment backs it. */
+    REDACTION_UNBACKED,
+
+    /** A present redactable value does not match its stored commitment (value/salt tampered). */
+    COMMITMENT_MISMATCH
 }

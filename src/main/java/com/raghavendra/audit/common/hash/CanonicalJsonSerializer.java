@@ -110,6 +110,38 @@ public final class CanonicalJsonSerializer {
         return sb.toString();
     }
 
+    /**
+     * Canonicalize a {@link ProtectedAmendmentProjection} for the amendment chain. Same rules
+     * as {@link #canonicalize(ProtectedEventProjection)}: fixed field order, sorted detail keys,
+     * UTF-8, explicit nulls, µs-normalized UTC timestamp, 64-hex previous hash / null.
+     */
+    public String canonicalizeAmendment(ProtectedAmendmentProjection a) {
+        StringBuilder sb = new StringBuilder(160);
+        sb.append('{');
+        writeLiteralField(sb, "schemaVersion", Integer.toString(a.schemaVersion()));
+        writeSep(sb);
+        writeLiteralField(sb, "amendmentSeq", Long.toString(a.amendmentSeq()));
+        writeSep(sb);
+        writeStringField(sb, "amendmentId", a.amendmentId());
+        writeSep(sb);
+        writeStringField(sb, "operation", a.operation());
+        writeSep(sb);
+        // targetSequenceNumber: numeric literal, or explicit null.
+        writeJsonString(sb, "targetSequenceNumber");
+        sb.append(':');
+        sb.append(a.targetSequenceNumber() == null ? "null" : Long.toString(a.targetSequenceNumber()));
+        writeSep(sb);
+        writeRawField(sb, "detail", canonicalizePayload(a.detailJson()));
+        writeSep(sb);
+        writeStringField(sb, "actorId", a.actorId());
+        writeSep(sb);
+        writeStringField(sb, "recordedAt", formatTimestamp(a.recordedAt()));
+        writeSep(sb);
+        writeStringField(sb, "previousAmendmentHash", hexOrNull(a.previousAmendmentHash()));
+        sb.append('}');
+        return sb.toString();
+    }
+
     // ---- payload canonicalization ------------------------------------------------------
 
     /**

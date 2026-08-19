@@ -5,6 +5,7 @@ import jakarta.validation.constraints.Size;
 import tools.jackson.databind.JsonNode;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 
 /**
  * Request body for {@code POST /api/v1/audit/events}.
@@ -27,8 +28,10 @@ import java.time.OffsetDateTime;
  * @param resourceId     specific affected resource
  * @param outcome        result of the action (e.g. SUCCESS, DENIED)
  * @param businessReason optional justification
- * @param payload        structured, event-specific detail (JSON object); optional
- * @param eventTimestamp optional caller-supplied business time; defaults to ingestion time
+ * @param payload          structured, event-specific detail (JSON object); optional
+ * @param redactableFields top-level payload field names to store as redactable envelopes
+ *                         (salt + commitment); optional. Only these fields can later be redacted.
+ * @param eventTimestamp   optional caller-supplied business time; defaults to ingestion time
  */
 public record AppendEventRequest(
         @NotBlank @Size(max = 128) String eventType,
@@ -39,6 +42,7 @@ public record AppendEventRequest(
         @NotBlank @Size(max = 64) String outcome,
         @Size(max = 1024) String businessReason,
         JsonNode payload,
+        List<String> redactableFields,
         OffsetDateTime eventTimestamp
 ) {
 }

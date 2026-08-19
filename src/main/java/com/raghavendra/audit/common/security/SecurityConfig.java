@@ -40,6 +40,10 @@ public class SecurityConfig {
                         // Public: API docs (prototype convenience).
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html")
                             .permitAll()
+                        // Redaction — ADMIN only. (Declared BEFORE the write rule so the more
+                        // specific path wins.)
+                        .requestMatchers(HttpMethod.POST, "/api/v1/audit/events/*/redact")
+                            .hasRole(ApiRole.ADMIN.name())
                         // Write API — WRITER or ADMIN.
                         .requestMatchers(HttpMethod.POST, "/api/v1/audit/events")
                             .hasAnyRole(ApiRole.WRITER.name(), ApiRole.ADMIN.name())

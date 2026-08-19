@@ -64,6 +64,21 @@ class ApiKeySecurityIntegrationTest {
                 .contentType(MediaType.APPLICATION_JSON).content(WRITE_BODY)).hasStatus(403);
     }
 
+    @Test
+    void redact_requiresAdmin_writerAndComplianceForbidden() {
+        String redactBody = "{ \"field\": \"accountNumber\" }";
+        // WRITER and COMPLIANCE_READER must be forbidden on the redact endpoint.
+        assertThat(mvc.post().uri("/api/v1/audit/events/1/redact")
+                .header("X-API-Key", "test-writer-key")
+                .contentType(MediaType.APPLICATION_JSON).content(redactBody)).hasStatus(403);
+        assertThat(mvc.post().uri("/api/v1/audit/events/1/redact")
+                .header("X-API-Key", "test-compliance-key")
+                .contentType(MediaType.APPLICATION_JSON).content(redactBody)).hasStatus(403);
+        // No key → 401.
+        assertThat(mvc.post().uri("/api/v1/audit/events/1/redact")
+                .contentType(MediaType.APPLICATION_JSON).content(redactBody)).hasStatus(401);
+    }
+
     // ---- correct role → allowed --------------------------------------------------------
 
     @Test

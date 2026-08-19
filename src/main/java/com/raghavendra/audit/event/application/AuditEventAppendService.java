@@ -3,6 +3,7 @@ package com.raghavendra.audit.event.application;
 import com.raghavendra.audit.common.hash.CanonicalJsonSerializer;
 import com.raghavendra.audit.common.hash.ProtectedEventProjection;
 import com.raghavendra.audit.common.hash.Sha256Hasher;
+import com.raghavendra.audit.redaction.RedactablePayloadProcessor;
 import com.raghavendra.audit.event.api.AppendEventRequest;
 import com.raghavendra.audit.event.domain.AuditChainHeadEntity;
 import com.raghavendra.audit.event.domain.AuditChainHeadRepository;
@@ -10,7 +11,6 @@ import com.raghavendra.audit.event.domain.AuditEventEntity;
 import com.raghavendra.audit.event.domain.AuditEventRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import tools.jackson.databind.JsonNode;
 
 import java.time.Clock;
 import java.time.OffsetDateTime;
@@ -43,6 +43,7 @@ public class AuditEventAppendService {
     private final AuditChainHeadRepository chainHeadRepository;
     private final CanonicalJsonSerializer serializer;
     private final Sha256Hasher hasher;
+    private final RedactablePayloadProcessor payloadProcessor;
     private final Clock clock;
 
     public AuditEventAppendService(
@@ -50,11 +51,13 @@ public class AuditEventAppendService {
             AuditChainHeadRepository chainHeadRepository,
             CanonicalJsonSerializer serializer,
             Sha256Hasher hasher,
+            RedactablePayloadProcessor payloadProcessor,
             Clock clock) {
         this.eventRepository = eventRepository;
         this.chainHeadRepository = chainHeadRepository;
         this.serializer = serializer;
         this.hasher = hasher;
+        this.payloadProcessor = payloadProcessor;
         this.clock = clock;
     }
 
@@ -93,7 +96,13 @@ public class AuditEventAppendService {
                 ? normalize(request.eventTimestamp())
                 : recordedAt;
 
-        String payloadJson = payloadToJson(request.payload());
+        // Process redactable fields: `stored` keeps plaintext (until redacted); `forHash`
+        // commits to salt+commitment only, so a later redaction (nulling the value) leaves the
+        // content hash unchanged. Non-redactable fields are identical in both.
+        RedactablePayloadProcessor.Processed processed =
+                payloadProcessor.process(eventId.toString(), request.payload(), request.redactableFields());
+        String storedPayloadJson = processed.storedPayloadJson();
+        String hashPayloadJson = processed.hashPayloadJson();
 
         ProtectedEventProjection projection = new ProtectedEventProjection(
                 SCHEMA_VERSION,
@@ -108,7 +117,7 @@ public class AuditEventAppendService {
                 request.businessReason(),
                 eventTimestamp,
                 recordedAt,
-                payloadJson,
+                hashPayloadJson, // hash commits to the redaction-stable payload projection
                 previousHash
         );
 
@@ -118,7 +127,7 @@ public class AuditEventAppendService {
                 eventId, nextSequence, request.actorId(), request.actorType(), request.eventType(),
                 request.resourceType(), request.resourceId(), request.outcome(),
                 request.businessReason(), eventTimestamp, recordedAt, SCHEMA_VERSION,
-                payloadJson, previousHash, contentHash);
+                storedPayloadJson, previousHash, contentHash); // store full payload (with values)
 
         AuditEventEntity saved = eventRepository.save(entity);
 
@@ -131,12 +140,5 @@ public class AuditEventAppendService {
 
     private OffsetDateTime normalize(OffsetDateTime ts) {
         return ts.withOffsetSameInstant(ZoneOffset.UTC).truncatedTo(ChronoUnit.MICROS);
-    }
-
-    private String payloadToJson(JsonNode payload) {
-        if (payload == null || payload.isNull()) {
-            return "{}";
-        }
-        return payload.toString();
     }
 }

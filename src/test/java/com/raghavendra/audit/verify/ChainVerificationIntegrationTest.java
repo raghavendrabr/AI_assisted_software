@@ -31,9 +31,11 @@ class ChainVerificationIntegrationTest {
     @Autowired private AuditEventRepository eventRepository;
     @Autowired private AuditChainHeadRepository chainHeadRepository;
     @Autowired private JdbcTemplate jdbc;
+    @Autowired private com.raghavendra.audit.amendment.domain.AuditAmendmentRepository amendmentRepository;
 
     @BeforeEach
     void reset() {
+        amendmentRepository.deleteAll();
         eventRepository.deleteAll();
         chainHeadRepository.findById(AuditChainHeadEntity.SINGLETON_ID)
                 .ifPresent(h -> { h.resetToEmpty(OffsetDateTime.now()); chainHeadRepository.save(h); });
@@ -52,7 +54,7 @@ class ChainVerificationIntegrationTest {
         for (int i = 0; i < n; i++) {
             appendService.append(new AppendEventRequest(
                     "USER_LOGIN", "actor-" + i, "USER", "CLIENT_ACCOUNT", "acct-1",
-                    "SUCCESS", null, null, null), UUID.randomUUID());
+                    "SUCCESS", null, null, null, null), UUID.randomUUID());
         }
     }
 
@@ -76,7 +78,7 @@ class ChainVerificationIntegrationTest {
                 while (!stop.get()) {
                     appendService.append(new AppendEventRequest(
                             "USER_LOGIN", "a", "USER", "CLIENT_ACCOUNT", "acct-1",
-                            "SUCCESS", null, null, null), UUID.randomUUID());
+                            "SUCCESS", null, null, null, null), UUID.randomUUID());
                 }
                 return null;
             });

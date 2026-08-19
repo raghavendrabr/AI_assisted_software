@@ -1,117 +1,122 @@
 package com.raghavendra.audit.verify;
 
+import com.raghavendra.audit.amendment.domain.AuditAmendmentEntity;
+import com.raghavendra.audit.amendment.domain.AuditAmendmentRepository;
+import com.raghavendra.audit.common.hash.ProtectedAmendmentProjection;
 import com.raghavendra.audit.common.hash.ProtectedEventProjection;
 import com.raghavendra.audit.common.hash.Sha256Hasher;
 import com.raghavendra.audit.event.domain.AuditChainHeadEntity;
 import com.raghavendra.audit.event.domain.AuditChainHeadRepository;
 import com.raghavendra.audit.event.domain.AuditEventEntity;
 import com.raghavendra.audit.event.domain.AuditEventRepository;
+import com.raghavendra.audit.redaction.RedactablePayloadProcessor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
- * Walks the full audit chain in sequence order and reports whether it is intact, or the first
- * inconsistency and its type. This is the read-side counterpart to the append service: it
- * recomputes each record's content hash from its stored fields using the exact same canonical
- * scheme (ADR 0003), so any post-hoc modification is detectable.
+ * Walks BOTH chains — the base-event chain and the amendment chain — and confirms consistency,
+ * including that every redaction of a plaintext value is backed by an authorized amendment.
  *
- * <p>Detected violations (first one wins, in walk order):
- * <ul>
- *   <li>{@code MALFORMED_STORED_HASH} — a stored content hash that is not 32 bytes;</li>
- *   <li>{@code CONTENT_HASH_MISMATCH} — a modified field OR modified payload (recomputed hash
- *       differs from the stored hash);</li>
- *   <li>{@code GENESIS_LINK_VIOLATION} — genesis has a previous_hash, or a later record lacks one;</li>
- *   <li>{@code PREVIOUS_HASH_MISMATCH} — a record's previous_hash ≠ the prior record's content hash;</li>
- *   <li>{@code SEQUENCE_GAP} — a missing/deleted sequence number;</li>
- *   <li>{@code CHAIN_HEAD_MISMATCH} — the head row disagrees with the actual chain tip.</li>
- * </ul>
+ * <p>Base content hashes are recomputed over the redaction-stable "hash payload" (redactable
+ * envelopes contribute {salt, commitment}, never the plaintext value), so a legitimately
+ * redacted event still verifies. Additional checks (in walk order per record):
+ * {@code COMMITMENT_MISMATCH} for a present value whose commitment doesn't match, and
+ * {@code REDACTION_UNBACKED} for a null value with no backing REDACTION amendment.
  */
 @Service
 public class ChainVerificationService {
 
     private final AuditEventRepository eventRepository;
+    private final AuditAmendmentRepository amendmentRepository;
     private final AuditChainHeadRepository chainHeadRepository;
     private final Sha256Hasher hasher;
+    private final RedactablePayloadProcessor payloadProcessor;
+    private final ObjectMapper mapper = new ObjectMapper();
 
     public ChainVerificationService(
             AuditEventRepository eventRepository,
+            AuditAmendmentRepository amendmentRepository,
             AuditChainHeadRepository chainHeadRepository,
-            Sha256Hasher hasher) {
+            Sha256Hasher hasher,
+            RedactablePayloadProcessor payloadProcessor) {
         this.eventRepository = eventRepository;
+        this.amendmentRepository = amendmentRepository;
         this.chainHeadRepository = chainHeadRepository;
         this.hasher = hasher;
+        this.payloadProcessor = payloadProcessor;
     }
 
-    /**
-     * Verification runs in a REPEATABLE_READ read-only transaction so the event scan and the
-     * chain-head read observe ONE consistent snapshot. Without this, a concurrent append
-     * committing between the two reads could make the head look ahead of the scanned events
-     * and produce a false {@code CHAIN_HEAD_MISMATCH}. REPEATABLE_READ (PostgreSQL snapshot
-     * isolation) pins the snapshot at the first statement, so verification always sees a
-     * coherent point-in-time chain.
-     */
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public ChainVerificationResult verify() {
         List<AuditEventEntity> events = eventRepository.findAllByOrderBySequenceNumberAsc();
+        List<AuditAmendmentEntity> amendments = amendmentRepository.findAllByOrderByAmendmentSeqAsc();
+
+        // 1. Verify the amendment chain first and collect authorized (sequence, field) redactions.
+        AmendmentVerification av = verifyAmendmentChain(amendments);
+        if (av.violation != null) {
+            return av.violation;
+        }
 
         long verified = 0;
-        byte[] priorContentHash = null; // content hash of the previously verified record
+        byte[] priorContentHash = null;
         long expectedSequence = 1;
 
         for (AuditEventEntity e : events) {
             long seq = e.getSequenceNumber();
 
-            // 1. Sequence gap / duplicate detection: sequences must be exactly 1,2,3,...
             if (seq != expectedSequence) {
                 return ChainVerificationResult.broken(verified, expectedSequence, e.getEventId(),
                         ChainViolationType.SEQUENCE_GAP,
                         "expected sequence " + expectedSequence + " but found " + seq);
             }
 
-            // 2. Malformed stored hash: content hash must be exactly 32 bytes.
             byte[] storedContentHash = e.getContentHash();
             if (storedContentHash == null || storedContentHash.length != 32) {
                 return ChainVerificationResult.broken(verified, seq, e.getEventId(),
-                        ChainViolationType.MALFORMED_STORED_HASH,
-                        "stored content_hash is not 32 bytes");
+                        ChainViolationType.MALFORMED_STORED_HASH, "stored content_hash is not 32 bytes");
             }
             byte[] storedPrevHash = e.getPreviousHash();
             if (storedPrevHash != null && storedPrevHash.length != 32) {
                 return ChainVerificationResult.broken(verified, seq, e.getEventId(),
-                        ChainViolationType.MALFORMED_STORED_HASH,
-                        "stored previous_hash is present but not 32 bytes");
+                        ChainViolationType.MALFORMED_STORED_HASH, "stored previous_hash is not 32 bytes");
             }
-
-            // 3. Genesis linkage: seq 1 => previous_hash null; seq > 1 => previous_hash present.
             if (seq == 1 && storedPrevHash != null) {
                 return ChainVerificationResult.broken(verified, seq, e.getEventId(),
-                        ChainViolationType.GENESIS_LINK_VIOLATION,
-                        "genesis record must have null previous_hash");
+                        ChainViolationType.GENESIS_LINK_VIOLATION, "genesis must have null previous_hash");
             }
             if (seq > 1 && storedPrevHash == null) {
                 return ChainVerificationResult.broken(verified, seq, e.getEventId(),
-                        ChainViolationType.GENESIS_LINK_VIOLATION,
-                        "non-genesis record must have a previous_hash");
+                        ChainViolationType.GENESIS_LINK_VIOLATION, "non-genesis must have a previous_hash");
             }
-
-            // 4. Previous-hash linkage: previous_hash must equal the prior record's content hash.
             if (seq > 1 && !Arrays.equals(storedPrevHash, priorContentHash)) {
                 return ChainVerificationResult.broken(verified, seq, e.getEventId(),
                         ChainViolationType.PREVIOUS_HASH_MISMATCH,
                         "previous_hash does not match the prior record's content_hash");
             }
 
-            // 5. Content-hash recomputation: detects a modified field OR modified payload.
-            byte[] recomputed = hasher.contentHash(toProjection(e, storedPrevHash));
+            // Redactable-field checks: present value must match its commitment; null value must
+            // be backed by an authorized REDACTION amendment for this (sequence, field).
+            ChainVerificationResult redactionCheck = checkRedactableFields(e, av.redactions);
+            if (redactionCheck != null) {
+                return redactionCheck;
+            }
+
+            // Content-hash recomputation over the redaction-stable hash payload.
+            String hashPayload = payloadProcessor.hashPayloadFromStored(e.getPayload());
+            byte[] recomputed = hasher.contentHash(toProjection(e, storedPrevHash, hashPayload));
             if (!Arrays.equals(recomputed, storedContentHash)) {
                 return ChainVerificationResult.broken(verified, seq, e.getEventId(),
                         ChainViolationType.CONTENT_HASH_MISMATCH,
-                        "recomputed content_hash does not match the stored content_hash "
-                                + "(a field or the payload was modified)");
+                        "recomputed content_hash does not match stored (a field or the payload was modified)");
             }
 
             verified++;
@@ -119,54 +124,151 @@ public class ChainVerificationService {
             expectedSequence++;
         }
 
-        // 6. Chain-head consistency: the head must reflect the actual tip.
-        AuditChainHeadEntity head = chainHeadRepository.findById(AuditChainHeadEntity.SINGLETON_ID)
-                .orElse(null);
-        ChainVerificationResult headCheck = verifyHead(head, verified, priorContentHash);
-        if (headCheck != null) {
-            return headCheck;
+        // Chain-head consistency: both tips.
+        AuditChainHeadEntity head = chainHeadRepository.findById(AuditChainHeadEntity.SINGLETON_ID).orElse(null);
+        if (head == null) {
+            return ChainVerificationResult.broken(verified, verified, null,
+                    ChainViolationType.CHAIN_HEAD_MISMATCH, "chain head row is missing");
+        }
+        if (head.getCurrentSequence() != verified || !Arrays.equals(head.getCurrentHash(), priorContentHash)) {
+            return ChainVerificationResult.broken(verified, verified, null,
+                    ChainViolationType.CHAIN_HEAD_MISMATCH,
+                    "chain head does not match the actual event tip");
+        }
+        if (head.getLastAmendmentSeq() != av.count || !Arrays.equals(head.getAmendmentHeadHash(), av.tipHash)) {
+            return ChainVerificationResult.broken(verified, verified, null,
+                    ChainViolationType.CHAIN_HEAD_MISMATCH,
+                    "chain head does not match the actual amendment tip");
         }
 
         return ChainVerificationResult.intact(verified);
     }
 
-    private ChainVerificationResult verifyHead(AuditChainHeadEntity head, long verified, byte[] tipHash) {
-        if (head == null) {
-            return ChainVerificationResult.broken(verified, verified, null,
-                    ChainViolationType.CHAIN_HEAD_MISMATCH, "chain head row is missing");
+    // ---- amendment chain ----------------------------------------------------------------
+
+    private record AmendmentVerification(
+            ChainVerificationResult violation, long count, byte[] tipHash, Set<String> redactions) {
+    }
+
+    private AmendmentVerification verifyAmendmentChain(List<AuditAmendmentEntity> amendments) {
+        long expected = 1;
+        byte[] prior = null;
+        Set<String> redactions = new HashSet<>();
+
+        for (AuditAmendmentEntity a : amendments) {
+            long seq = a.getAmendmentSeq();
+            byte[] stored = a.getContentHash();
+            byte[] prev = a.getPreviousAmendmentHash();
+
+            if (seq != expected
+                    || stored == null || stored.length != 32
+                    || (prev != null && prev.length != 32)
+                    || (seq == 1 && prev != null)
+                    || (seq > 1 && prev == null)
+                    || (seq > 1 && !Arrays.equals(prev, prior))) {
+                return new AmendmentVerification(
+                        ChainVerificationResult.broken(seq - 1, seq, a.getAmendmentId(),
+                                ChainViolationType.AMENDMENT_CHAIN_BROKEN,
+                                "amendment chain linkage/sequence/hash is invalid at seq " + seq),
+                        0, null, redactions);
+            }
+
+            byte[] recomputed = hasher.amendmentContentHash(new ProtectedAmendmentProjection(
+                    a.getSchemaVersion(), seq, a.getAmendmentId().toString(), a.getOperation(),
+                    a.getTargetSequenceNumber(), a.getDetail(), a.getActorId(), a.getRecordedAt(), prev));
+            if (!Arrays.equals(recomputed, stored)) {
+                return new AmendmentVerification(
+                        ChainVerificationResult.broken(seq - 1, seq, a.getAmendmentId(),
+                                ChainViolationType.AMENDMENT_CHAIN_BROKEN,
+                                "amendment content_hash does not match (an amendment was modified)"),
+                        0, null, redactions);
+            }
+
+            if ("REDACTION".equals(a.getOperation()) && a.getTargetSequenceNumber() != null) {
+                String field = readField(a.getDetail());
+                if (field != null) {
+                    redactions.add(a.getTargetSequenceNumber() + "#" + field);
+                }
+            }
+
+            prior = stored;
+            expected++;
         }
-        if (head.getCurrentSequence() != verified) {
-            return ChainVerificationResult.broken(verified, verified, null,
-                    ChainViolationType.CHAIN_HEAD_MISMATCH,
-                    "chain head sequence " + head.getCurrentSequence()
-                            + " does not match the actual tip " + verified);
+        return new AmendmentVerification(null, expected - 1, prior, redactions);
+    }
+
+    // ---- redactable-field checks --------------------------------------------------------
+
+    private ChainVerificationResult checkRedactableFields(AuditEventEntity e, Set<String> redactions) {
+        JsonNode payload = readTree(e.getPayload());
+        if (payload == null || !payload.isObject()) {
+            return null;
         }
-        byte[] headHash = head.getCurrentHash();
-        // Empty chain: tip hash null; non-empty: head hash must equal the last content hash.
-        if (!Arrays.equals(headHash, tipHash)) {
-            return ChainVerificationResult.broken(verified, verified, null,
-                    ChainViolationType.CHAIN_HEAD_MISMATCH,
-                    "chain head current_hash does not match the actual tip content_hash");
+        for (String field : fieldNames(payload)) {
+            JsonNode env = payload.get(field);
+            if (env == null || !env.isObject() || !env.has("salt") || !env.has("commitment")) {
+                continue; // not a redactable envelope
+            }
+            JsonNode value = env.get("value");
+            if (value == null || value.isNull()) {
+                // Null plaintext requires a backing REDACTION amendment.
+                if (!redactions.contains(e.getSequenceNumber() + "#" + field)) {
+                    return ChainVerificationResult.broken(
+                            e.getSequenceNumber() - 1, e.getSequenceNumber(), e.getEventId(),
+                            ChainViolationType.REDACTION_UNBACKED,
+                            "field '" + field + "' is redacted (null) with no authorized REDACTION amendment");
+                }
+            } else {
+                // Present value must match its commitment (bound to eventId + field path).
+                byte[] salt = decodeHex(env.get("salt").asString());
+                String recomputed = payloadProcessor.commitment(
+                        e.getEventId().toString(), field, salt, value);
+                if (!recomputed.equals(env.get("commitment").asString())) {
+                    return ChainVerificationResult.broken(
+                            e.getSequenceNumber() - 1, e.getSequenceNumber(), e.getEventId(),
+                            ChainViolationType.COMMITMENT_MISMATCH,
+                            "field '" + field + "' value does not match its commitment (value/salt tampered)");
+                }
+            }
         }
         return null;
     }
 
-    private ProtectedEventProjection toProjection(AuditEventEntity e, byte[] previousHash) {
+    // ---- helpers ------------------------------------------------------------------------
+
+    private ProtectedEventProjection toProjection(AuditEventEntity e, byte[] previousHash, String hashPayload) {
         return new ProtectedEventProjection(
-                e.getSchemaVersion(),
-                e.getSequenceNumber(),
-                e.getEventId().toString(),
-                e.getActorId(),
-                e.getActorType(),
-                e.getAction(),
-                e.getResourceType(),
-                e.getResourceId(),
-                e.getOutcome(),
-                e.getBusinessReason(),
-                e.getEventTimestamp(),
-                e.getRecordedAt(),
-                e.getPayload(),
-                previousHash
-        );
+                e.getSchemaVersion(), e.getSequenceNumber(), e.getEventId().toString(),
+                e.getActorId(), e.getActorType(), e.getAction(), e.getResourceType(),
+                e.getResourceId(), e.getOutcome(), e.getBusinessReason(),
+                e.getEventTimestamp(), e.getRecordedAt(), hashPayload, previousHash);
+    }
+
+    private JsonNode readTree(String json) {
+        if (json == null || json.isBlank()) {
+            return null;
+        }
+        return mapper.readTree(json);
+    }
+
+    private List<String> fieldNames(JsonNode node) {
+        List<String> names = new ArrayList<>();
+        node.propertyNames().forEach(names::add);
+        return names;
+    }
+
+    private String readField(String detailJson) {
+        JsonNode d = readTree(detailJson);
+        return (d != null && d.has("field")) ? d.get("field").asString() : null;
+    }
+
+    private byte[] decodeHex(String hex) {
+        int len = hex.length();
+        byte[] out = new byte[len / 2];
+        for (int i = 0; i < out.length; i++) {
+            out[i] = (byte) ((Character.digit(hex.charAt(i * 2), 16) << 4)
+                    + Character.digit(hex.charAt(i * 2 + 1), 16));
+        }
+        return out;
     }
 }

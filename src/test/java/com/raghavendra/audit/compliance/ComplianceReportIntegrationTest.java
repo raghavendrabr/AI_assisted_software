@@ -43,7 +43,7 @@ class ComplianceReportIntegrationTest {
     private void access(String actor, String account, String outcome, String resourceType) {
         appendService.append(new AppendEventRequest(
                 "CLIENT_ACCOUNT_VIEWED", actor, "EMPLOYEE", resourceType, account,
-                outcome, "customer support", null, null), UUID.randomUUID());
+                outcome, "customer support", null, null, null), UUID.randomUUID());
     }
 
     private org.springframework.test.web.servlet.assertj.MockMvcTester.MockMvcRequestBuilder report(String query) {

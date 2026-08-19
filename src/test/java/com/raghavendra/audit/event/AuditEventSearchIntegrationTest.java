@@ -42,7 +42,7 @@ class AuditEventSearchIntegrationTest {
     private void append(String actorId, String resourceId, String eventType) {
         appendService.append(new AppendEventRequest(
                 eventType, actorId, "USER", "CLIENT_ACCOUNT", resourceId,
-                "SUCCESS", null, null, null), UUID.randomUUID());
+                "SUCCESS", null, null, null, null), UUID.randomUUID());
     }
 
     /** GET with a COMPLIANCE_READER key (search requires COMPLIANCE_READER or ADMIN). */

@@ -34,6 +34,12 @@ public class AuditChainHeadEntity {
     @Column(name = "updated_at", nullable = false)
     private OffsetDateTime updatedAt;
 
+    @Column(name = "last_amendment_seq", nullable = false)
+    private long lastAmendmentSeq;
+
+    @Column(name = "amendment_head_hash")
+    private byte[] amendmentHeadHash;
+
     protected AuditChainHeadEntity() {
         // for JPA
     }
@@ -64,13 +70,33 @@ public class AuditChainHeadEntity {
         this.updatedAt = updatedAt;
     }
 
+    public long getLastAmendmentSeq() {
+        return lastAmendmentSeq;
+    }
+
+    public byte[] getAmendmentHeadHash() {
+        return amendmentHeadHash == null ? null : amendmentHeadHash.clone();
+    }
+
     /**
-     * Reset the head to the empty-chain state (sequence 0, null hash). Intended for test
-     * fixtures that clear the chain; production appends only ever advance the head forward.
+     * Advance the amendment-chain tip. Called only inside the redaction/amendment transaction
+     * while this row is locked FOR UPDATE.
+     */
+    public void advanceAmendment(long newSeq, byte[] newHash, OffsetDateTime updatedAt) {
+        this.lastAmendmentSeq = newSeq;
+        this.amendmentHeadHash = newHash.clone();
+        this.updatedAt = updatedAt;
+    }
+
+    /**
+     * Reset the head to the empty-chain state (both chains empty). Intended for test fixtures
+     * that clear the chain; production appends only ever advance the head forward.
      */
     public void resetToEmpty(OffsetDateTime updatedAt) {
         this.currentSequence = 0L;
         this.currentHash = null;
+        this.lastAmendmentSeq = 0L;
+        this.amendmentHeadHash = null;
         this.updatedAt = updatedAt;
     }
 }

@@ -454,6 +454,45 @@ below because they are the clearest evidence of engineer-led, AI-accelerated wor
   client-account reporting with filters; existing tests updated to send keys.
 - **Human sign-off:** _<PENDING: Raghavendra to review/approve>_
 
+## Session 8 — Amendment chain & structured redaction (Day 1, Commit 8)
+
+### AI-016 — Second hash chain + salted-commitment redaction (Scenario B core)
+
+- **Intent / prompt (from the engineer):** the amendment-chain + redaction slice of Scenario B
+  (chosen over retention/export for this commit): V2 migration for `audit_amendment`, the
+  independently hash-chained amendment log, salted-commitment redaction that nulls plaintext
+  without breaking the chain, verifier extended for redaction-backed vs unbacked, and tests.
+- **What the AI produced:** V2 migration (`audit_amendment` + amendment tip on the head);
+  `AuditAmendmentEntity`/repository; `ProtectedAmendmentProjection` + `canonicalizeAmendment` +
+  `amendmentContentHash`; `RedactablePayloadProcessor` (stored envelope vs hash payload);
+  `RedactionService` (atomic, head-locked, amendment-backed), `RedactionController`
+  (`POST /events/{seq}/redact`, ADMIN); extended `ChainVerificationService` with
+  `AMENDMENT_CHAIN_BROKEN`, `REDACTION_UNBACKED`, `COMMITMENT_MISMATCH` and amendment-tip head
+  check; `AppendEventRequest.redactableFields`. ADR 0007 records it.
+- **Key design:** the content hash commits to a redactable field's `{salt, commitment}` only,
+  never the plaintext `value`; so redaction (null the value) leaves `content_hash` unchanged and
+  the event chain intact. A null value is legitimate only when a matching REDACTION amendment
+  exists. Honest limitation documented: retaining salt+commitment allows offline brute-force of
+  low-entropy values — tamper-evidence, not confidentiality-at-rest.
+- **Test-isolation fix:** the verification integration test now also clears the amendment table
+  in `@BeforeEach` (shared container), and `resetToEmpty` resets both chain tips.
+- **Accepted / Rejected:** accepted salted-commitment + amendment backing (per the approved
+  plan/ADR); documented crypto-erasure as the deferred production alternative. Retention and
+  export deferred to later commits (documented scope boundary).
+- **Security hardening confirmed in review (engineer-directed):**
+  1. salt is 32 bytes from `SecureRandom` (≥16-byte minimum enforced);
+  2. commitment is **domain-separated and bound to eventId + field path**
+     (`SHA-256(DOMAIN|eventId|field|salt|value)` with 0x1F separators) — was previously just
+     `SHA-256(salt|value)`, which allowed cross-event/field replay; **fixed**;
+  3. no plaintext in amendment records or logs (amendment detail is `{field}`+actor only);
+  4. **concurrency bug fixed**: the field-state check now happens AFTER acquiring the head lock
+     (with a persistence-context clear), so concurrent same-field redaction yields exactly one
+     success; previously all N could pass the pre-lock check;
+  5. atomic rollback: a failed redaction writes nothing (both chains unchanged).
+- **Validation:** full suite **101 tests, 0 failures** (added `RedactablePayloadProcessorTest`
+  (6) + 3 integration checks: concurrent-one-succeeds, atomic-rollback, no-plaintext-in-amendment).
+- **Human sign-off:** _<PENDING: Raghavendra to review/approve>_
+
 ---
 
 ## How to read this log going forward

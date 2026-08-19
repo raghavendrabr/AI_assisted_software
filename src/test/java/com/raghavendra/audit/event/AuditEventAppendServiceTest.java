@@ -55,7 +55,7 @@ class AuditEventAppendServiceTest {
 
     private AppendEventRequest req() {
         return new AppendEventRequest("USER_LOGIN", "actor-1", "USER",
-                "CLIENT_ACCOUNT", "acct-1", "SUCCESS", null, null, null);
+                "CLIENT_ACCOUNT", "acct-1", "SUCCESS", null, null, null, null);
     }
 
     // ---- append + linkage --------------------------------------------------------------

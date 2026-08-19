@@ -41,6 +41,12 @@ public final class Sha256Hasher {
         return sha256(canonical.getBytes(StandardCharsets.UTF_8));
     }
 
+    /** The 32-byte SHA-256 content hash of an amendment projection. */
+    public byte[] amendmentContentHash(ProtectedAmendmentProjection projection) {
+        String canonical = serializer.canonicalizeAmendment(projection);
+        return sha256(canonical.getBytes(StandardCharsets.UTF_8));
+    }
+
     /**
      * Convenience overload used by tests and lower-level callers: SHA-256 of an arbitrary
      * canonical string's UTF-8 bytes.

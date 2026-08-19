@@ -1,6 +1,7 @@
 package com.raghavendra.audit.event.api;
 
 import com.raghavendra.audit.event.application.DuplicateEventIdException;
+import com.raghavendra.audit.redaction.RedactionException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -43,6 +44,14 @@ public class AuditExceptionHandler {
     public ResponseEntity<ApiError> handleInvalidSearch(InvalidSearchRequestException ex) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(
                 ApiError.of(HttpStatus.BAD_REQUEST.value(), "Bad Request", ex.getMessage(), List.of()));
+    }
+
+    /** Redaction failures → 404 (unknown target) or 400 (invalid/already-redacted field). */
+    @ExceptionHandler(RedactionException.class)
+    public ResponseEntity<ApiError> handleRedaction(RedactionException ex) {
+        HttpStatus status = ex.isNotFound() ? HttpStatus.NOT_FOUND : HttpStatus.BAD_REQUEST;
+        return ResponseEntity.status(status).body(
+                ApiError.of(status.value(), status.getReasonPhrase(), ex.getMessage(), List.of()));
     }
 
     /**
