@@ -10,10 +10,9 @@ import org.testcontainers.containers.PostgreSQLContainer;
 /**
  * Scaffolding-stage smoke test.
  *
- * <p>This is the single default context-load check: it starts the full Spring
- * application context against a REAL PostgreSQL provided by Testcontainers, proving the
- * wiring, datasource, JPA, and (empty) Flyway setup boot successfully. It asserts no
- * business behavior because none exists yet.
+ * <p>Default context-load check: it starts the full Spring application context against a REAL
+ * PostgreSQL provided by Testcontainers, proving the wiring, datasource, JPA, and Flyway setup
+ * boot successfully. Behavioral assertions live in the per-feature integration tests.
  *
  * <p>Requires a running Docker engine (Testcontainers starts a throwaway PostgreSQL 16
  * container). If Docker is not available the test cannot run.
@@ -39,6 +38,6 @@ class AuditLogServiceApplicationTests {
     @Test
     void contextLoads() {
         // Intentionally empty: success means the Spring context started against a real
-        // PostgreSQL. No business assertions at the scaffolding stage.
+        // PostgreSQL. Feature behavior is asserted in the per-feature integration tests.
     }
 }

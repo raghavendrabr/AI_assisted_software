@@ -1,57 +1,86 @@
-# Final Engineering Summary — OUTLINE (to be completed)
-
-> **Status: outline only.** This document will be filled in as the system is built and
-> validated. Sections below are placeholders describing what each will contain; they do
-> **not** yet describe finished work, and no results are claimed here. Placeholders are
-> marked `_<TBD>_`.
+# Final Engineering Summary
 
 ## 1. Plan & rationale
-- _<TBD>_ Summary of the requirement interpretation and the chosen approach (tamper-evident
-  append-only log via a SHA-256 hash chain; immutable base events + separate amendment
-  chain for lifecycle events).
-- _<TBD>_ Why a modular monolith on Java 21 / Spring Boot 4.1 / PostgreSQL rather than a
-  distributed design.
-- _<TBD>_ Link to the approved implementation plan and the per-scenario requirement docs.
 
-## 2. Artifacts produced
-- _<TBD>_ Enumerate delivered components (APIs, schema/migrations, canonical serializer +
-  hasher, verification, redaction, retention/archive, export + standalone verifier,
-  compliance report), each with its location. To be populated as code lands.
+Built a tamper-evident audit log service over an incremental, commit-by-commit process (see git
+history and `docs/ai-usage-log.md`). Each commit was a self-contained slice — requirements →
+scaffolding → schema → hashing → append → query/verify → security/compliance → redaction →
+retention → signed export — validated end-to-end and reviewed before the next.
 
-## 3. Architecture overview
-- _<TBD>_ Components & responsibilities.
-- _<TBD>_ Data model (base events, amendments, chain head, archive manifest) and the
-  reasoning behind the two-chain design.
-- _<TBD>_ API design and the authorization matrix.
-- _<TBD>_ **Hash algorithm choice and chain design** (SHA-256, canonical serialization,
-  genesis value) — required by the assignment; to be written up with the ADR.
+Core design decision: **two independent hash chains**. Base events are immutable (except a
+hash-excluded redactable value); lifecycle changes (redaction, archival) are separate,
+independently hash-chained *amendments*. This makes an authorized change a *positive, provable
+fact* rather than something indistinguishable from tampering, and keeps lifecycle state inside
+integrity protection. Full architecture: `docs/architecture.md`. Decisions: `docs/decisions/0001`–`0009`.
 
-## 4. Key decisions & trade-offs
-- _<TBD>_ Concurrency via a locked chain-head row (correctness vs. throughput).
-- _<TBD>_ Salted-commitment redaction (tamper-evidence vs. confidentiality; honest
-  low-entropy limitation; crypto-erasure as the production alternative).
-- _<TBD>_ Retention by archival with manifest binding (no false-positive breaks).
-- _<TBD>_ Ed25519-signed export (why not a plain bundle hash or the API key).
-- _<TBD>_ API-key auth for the prototype vs. OAuth2/OIDC + mTLS for production.
-- _<TBD>_ Framework version selection (Spring Boot 4.1 / springdoc 3.1) and how it was verified.
+## 2. Artifacts
 
-## 5. Risks, failure scenarios & validation
-- _<TBD>_ Threats considered (direct data-store tampering, unauthorized nulling,
-  commitment/salt manipulation, amendment manipulation, archive removal/reordering,
-  chain-head tampering, export tampering, unauthorized access).
-- _<TBD>_ Validation strategy: unit tests (canonical serializer/hasher, Ed25519) and
-  Testcontainers integration tests including the adversarial matrix. Results to be
-  recorded here **after** the tests exist and run.
+- **Runnable service** (Spring Boot 4.1 / Java 21 / PostgreSQL 16), Maven Wrapper, Docker Compose.
+- **APIs:** append, filtered/paginated query, verify, redact, archive, signed export, compliance report.
+- **Schema:** Flyway V1 (event chain), V2 (amendment chain), V3 (archive + manifest).
+- **Hashing library:** canonical serializer + SHA-256 + Ed25519 signer + standalone bundle verifier.
+- **Docs:** architecture, 9 ADRs, per-scenario requirements, testing strategy, threat model, AI usage log.
+- **Tests:** 135 (unit + Testcontainers integration).
+- **Demo:** `docs/demo.md` walkthrough + `scripts/demo.sh` end-to-end script.
 
-## 6. Assumptions & limitations
-- _<TBD>_ Consolidated from `docs/assumptions.md` and the scenario docs.
-- _<TBD>_ Explicit scope boundaries (crypto-erasure/KMS, Merkle completeness proofs,
-  OAuth2/mTLS, scheduled/PDF reports, sharded chains) — stated, not hidden.
+## 3. Scenario outcomes
 
-## 7. AI usage summary
-- _<TBD>_ Condensed summary referencing `docs/ai-usage-log.md`: what AI accelerated, what
-  the engineer corrected in review, and how ownership was retained.
+- **A (Greenfield):** append-only write API; query with actor/resource/eventType/time filters +
+  stable cursor pagination; SHA-256 hash chain; `GET /audit/verify` detecting six+ violation types;
+  validated by tampering a DB row and re-verifying.
+- **B (Extension):** retention/archival (move oldest prefix + manifest + ARCHIVE amendment; verify
+  reads active∪archive as one chain); salted-commitment redaction that keeps the chain intact;
+  Ed25519-signed bulk export with an offline standalone verifier.
+- **C (Ambiguous):** clarified the "regulators must audit access to client account data" requirement
+  (`docs/requirements/scenario-c.md` + `docs/scenario-c-design.md`), implemented the access-report
+  slice (success + denied client-account access, actor/account/outcome/time filters, tie-back to
+  the chain), and documented the explicit scope boundary.
 
-## 8. How to run & verify (to be added with the code)
-- _<TBD>_ Setup/run instructions and the end-to-end verification walkthrough. **Not
-  written yet** — will be added only once the corresponding functionality exists.
+## 4. Risks, trade-offs & validation
+
+| Risk / trade-off | Decision | Validation |
+|---|---|---|
+| Write throughput vs. one deterministic chain | Serialize on a locked head row | 25-way concurrent-append test → gap-free chain |
+| False break under concurrent append during verify | REPEATABLE_READ verification | concurrent-verify test |
+| Redaction privacy | Salted commitment = tamper-evidence, not confidentiality (crypto-erasure deferred) | redaction tests + documented limitation |
+| Redaction/archival vs. tampering | Amendment-backed; verifier rejects unbacked changes | REDACTION_UNBACKED / ARCHIVE_PROOF_MISMATCH tests |
+| Export authenticity of a filtered subset | Ed25519-signed canonical manifest; standalone verifier | tamper/reorder/remove/wrong-key rejection tests |
+| Export completeness | Not proven offline (documented) | — |
+| Deployed service with no signing key | Fail closed (ephemeral key only under local/test) | signer fail-closed test |
+
+## 5. Assumptions
+
+- Single global chain (not per-tenant); caller supplies business `eventTimestamp`, server assigns
+  `recorded_at`; a single PostgreSQL instance; static API keys acceptable for the prototype;
+  retention is manually triggered on a contiguous oldest prefix. Full list: `docs/assumptions.md`.
+
+## 6. Limitations (honest)
+
+- **Redaction** provides tamper-evidence, not confidentiality-at-rest (low-entropy values are
+  brute-forceable); true erasure/crypto-erasure is future work.
+- **Export** proves the bundle is unchanged, not global query completeness.
+- **Retention** moves records (never destroys); hard deletion/legal erasure is out of scope.
+- **Security** is prototype-grade (static API keys); production needs OAuth2/OIDC + mTLS + a secret
+  manager/KMS.
+- **Scale:** the single-chain head lock caps write throughput by design.
+
+## 7. AI usage
+
+AI (Claude) accelerated planning, drafting, and adversarial design review; the engineer directed
+the work, reviewed every output, and corrected substantial issues (framework EOL/version, redaction
+hash coverage + domain separation, export completeness claims, amendment-reference integrity,
+server-side auth, concurrency ordering, fail-closed key policy, and more). Every correction is
+recorded in `docs/ai-usage-log.md` with what AI proposed and what was accepted / modified /
+rejected. Correctness, maintainability, and authorship remain the engineer's.
+
+## 8. How to run & verify
+
+See `README.md` (Getting started) and `docs/demo.md`. In short:
+```
+docker compose up -d                 # PostgreSQL 16
+./mvnw spring-boot:run               # the service (Flyway applies V1–V3)
+./mvnw test                          # 135 tests (Testcontainers; needs Docker)
+scripts/demo.sh                      # end-to-end: append, query, verify, redact, archive, export
+```
+Core proof: append events, `GET /audit/verify` → intact; modify a row directly in PostgreSQL;
+`GET /audit/verify` → broken with the first inconsistency and violation type.

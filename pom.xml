@@ -22,7 +22,7 @@
     <artifactId>audit-log-service</artifactId>
     <version>0.0.1-SNAPSHOT</version>
     <name>audit-log-service</name>
-    <description>Tamper-evident audit log service (interview assignment) — scaffolding stage</description>
+    <description>Tamper-evident audit log service (interview assignment)</description>
 
     <properties>
         <!-- Java 21 is within Spring Boot 4.1's supported range (17–26). -->

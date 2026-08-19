@@ -27,15 +27,20 @@ spring:
     # Replace with your own LOCAL password if you changed it in .env / docker-compose.
     password: CHANGE_ME_LOCAL_DEV_PASSWORD
 
-# Values intended for later steps (not consumed by code yet). Shown here so you know
-# which environment variables the service will eventually read. Do NOT put real
-# secrets in a committed file; keep them in the git-ignored application-local.yml
-# or in environment variables.
+# Optional service config. Do NOT put real secrets in a committed file; keep them in the
+# git-ignored application-local.yml or (preferably) in environment variables.
 #
 # audit:
 #   security:
-#     # Example ONLY — replace, and never commit real keys. Format TBD in a later step.
-#     api-keys: "writer-key:WRITER,compliance-key:COMPLIANCE_READER,admin-key:ADMIN"
+#     # API keys → roles, resolved server-side. Example values ONLY — replace, never commit real keys.
+#     api-keys:
+#       - key: writer-dev-key
+#         role: WRITER
+#       - key: compliance-dev-key
+#         role: COMPLIANCE_READER
+#       - key: admin-dev-key
+#         role: ADMIN
 #   export:
-#     signing-key-path: /run/secrets/audit_export_ed25519_private.pem   # never commit this file
-#     public-key-path:  dev-keys/audit_export_ed25519_public.pem        # public key may be committed later
+#     # Ed25519 export signing. The PRIVATE key must never be committed (see .gitignore).
+#     private-key-path: /run/secrets/export_ed25519_private.pem   # never commit this file
+#     public-key-path:  dev-keys/export_ed25519_public.pem        # public key may be committed

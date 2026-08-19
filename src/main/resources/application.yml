@@ -1,14 +1,11 @@
 # =============================================================================
-# Audit Log Service — base configuration (scaffolding stage)
+# Audit Log Service — base configuration
 #
 # This file is COMMITTED and MUST NOT contain secrets. Every sensitive value is
 # an environment-variable placeholder with a safe, non-secret local default that
 # only works against the local Docker Compose PostgreSQL. Real credentials for any
 # non-local environment come from the environment or from a git-ignored
 # application-local.yml (see application-local.yml.example).
-#
-# NOTE: No database schema is created in this step. There are no Flyway migrations
-# and no JPA entities yet, so schema management is intentionally inert.
 # =============================================================================
 
 spring:
@@ -25,8 +22,8 @@ spring:
 
   jpa:
     hibernate:
-      # 'none': we do NOT let Hibernate create/alter tables. Schema will be owned by
-      # Flyway migrations in a later step. No tables are created now.
+      # 'none': Hibernate never creates/alters tables. The schema is owned entirely by
+      # Flyway migrations (db/migration/V1–V3).
       ddl-auto: none
     open-in-view: false
     properties:
@@ -35,9 +32,8 @@ spring:
           time_zone: UTC
 
   flyway:
-    # Flyway manages the schema. As of V1 there IS a migration
-    # (db/migration/V1__create_audit_chain_foundation.sql); on startup Flyway
-    # applies any pending migrations and records them in flyway_schema_history.
+    # Flyway owns the schema (migrations V1–V3 under db/migration); on startup it applies
+    # any pending migrations and records them in flyway_schema_history.
     enabled: true
     # baseline-on-migrate stays false; the schema is created entirely by Flyway.
 

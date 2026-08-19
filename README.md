@@ -1,13 +1,9 @@
 # Tamper-Evident Audit Log Service
 
-> **Project status: SCAFFOLDING STAGE.**
-> The project now has a Maven build, a minimal Spring Boot entry point, base
-> configuration, and a local PostgreSQL via Docker Compose. **There are still no
-> database tables, Flyway migrations, JPA entities, repositories, controllers,
-> services, hash-chain logic, or business functionality — and no functional tests
-> beyond the default Spring context check.** The sections below describe the
-> **intended** stack and **planned** capabilities; only the scaffolding described in
-> "Getting started" actually exists today. No APIs work yet.
+> **Project status: COMPLETE (Scenarios A, B, C).**
+> Runnable end-to-end on Java 21 / Spring Boot 4.1 / PostgreSQL 16 with 135 passing tests
+> (unit + Testcontainers integration). See [docs/architecture.md](docs/architecture.md) and
+> [docs/final-engineering-summary.md](docs/final-engineering-summary.md).
 
 A service that records an **append-only** history of events and makes any modification
 or deletion of past records **detectable** via a cryptographic hash chain. Built as an
@@ -42,12 +38,12 @@ not been built.
 
 ---
 
-## Getting started (local, scaffolding stage)
+## Getting started (local)
 
-What genuinely works today: the project compiles, the Spring Boot application starts,
-Flyway applies the **V1** schema migration (creating `audit_event`, `audit_chain_head`,
-and the seeded empty-chain head row), and a local PostgreSQL runs under Docker Compose.
-There are still **no** working endpoints and **no** business logic.
+The service runs end-to-end: `docker compose up` starts PostgreSQL 16, `./mvnw spring-boot:run`
+starts the app (Flyway applies migrations V1–V3), and the full API (append, query, verify, redact,
+archive, signed export, compliance report) is available. See [docs/demo.md](docs/demo.md) for a
+guided walkthrough.
 
 ### Prerequisites
 - **JDK 21** (Spring Boot 4.1 supports Java 17–26; this project targets 21).
@@ -206,10 +202,14 @@ These map to the three assignment scenarios. **None are implemented yet.**
     └── final-engineering-summary.md  <- outline, to be filled in as work proceeds
 ```
 
-The full approved implementation plan (schemas, hash inputs, redaction scheme, archive
-verification, export proof format, authorization matrix, commit sequence) lives outside
-this repo in the planning workspace and will be reflected here as `docs/architecture.md`
-and ADRs under `docs/decisions/` when implementation begins.
+### Key documents
+- [docs/architecture.md](docs/architecture.md) — components, data model, two-chain design, API + authz matrix, hashing.
+- [docs/final-engineering-summary.md](docs/final-engineering-summary.md) — plan, artifacts, risks/trade-offs, assumptions, limitations.
+- [docs/testing-strategy.md](docs/testing-strategy.md) — coverage and what's out of scope.
+- [docs/threat-model.md](docs/threat-model.md) — adversaries, mitigations, residual risks.
+- [docs/scenario-c-design.md](docs/scenario-c-design.md) — compliance-reporting clarification + design.
+- [docs/demo.md](docs/demo.md) — end-to-end walkthrough; [scripts/demo.sh](scripts/demo.sh) runs it.
+- [docs/decisions/](docs/decisions/) — ADRs 0001–0009; [docs/ai-usage-log.md](docs/ai-usage-log.md) — AI traceability.
 
 ---
 
