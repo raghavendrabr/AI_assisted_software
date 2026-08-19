@@ -26,10 +26,12 @@ correctness, design, and authorship.
 | Database schema / Flyway migrations | **V1** — `audit_event` + `audit_chain_head` tables + seed row |
 | Hashing | Canonical serialization + SHA-256 content hash (ADR 0003) |
 | Write API | `POST /api/v1/audit/events` — transactional append, `SELECT ... FOR UPDATE` chain lock (ADR 0004) |
-| Read / verify / redaction / archival / export | **Not started** |
+| Read API | `GET /api/v1/audit/events` — filtered, cursor-paginated, bounded search (ADR 0005) |
+| Verify API | `GET /api/v1/audit/verify` — full chain walk, 6 violation types (ADR 0005) |
+| Redaction / archival / export | **Not started** (Scenario B) |
 | Security | **Temporary permit-all** (real API-key/role auth is a later step) |
-| Tests | Context-load + V1 schema + hashing (22) + append/concurrency integration (9) |
-| Runnable end-to-end | **Partially** — the app starts, applies V1, and accepts appends; no query/verify yet |
+| Tests | 59 total — hashing (22), V1 schema (11), append/concurrency (12), search (4), verify (9), handler (2), context (1) |
+| Runnable end-to-end | **Scenario A works** — append, query, verify; tamper a row in the DB and verify detects it |
 
 API examples and test-status badges will be added **only once the corresponding code
 exists**. They are intentionally omitted now to avoid implying functionality that has

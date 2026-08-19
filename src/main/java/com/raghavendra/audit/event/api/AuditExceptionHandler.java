@@ -38,6 +38,13 @@ public class AuditExceptionHandler {
                         "Malformed request body", List.of()));
     }
 
+    /** Invalid search query parameters (limit, time range) → 400. */
+    @ExceptionHandler(InvalidSearchRequestException.class)
+    public ResponseEntity<ApiError> handleInvalidSearch(InvalidSearchRequestException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(
+                ApiError.of(HttpStatus.BAD_REQUEST.value(), "Bad Request", ex.getMessage(), List.of()));
+    }
+
     /**
      * Duplicate event id → 409 Conflict.
      *

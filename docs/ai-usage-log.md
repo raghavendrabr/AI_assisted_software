@@ -378,6 +378,47 @@ below because they are the clearest evidence of engineer-led, AI-accelerated wor
   gap-free strictly-increasing linked chain; duplicate id → 409 with no chain advance.
 - **Human sign-off:** _<PENDING: Raghavendra to review/approve>_
 
+## Session 6 — Filtered search & chain verification (Day 1, Commit 6)
+
+### AI-014 — Search + verification (read side of Scenario A)
+
+- **Intent / prompt (from the engineer):** bounded filtered search; deterministic cursor
+  pagination; complete chain verification detecting modified fields, modified payload, broken
+  previous hash, missing/deleted sequence, malformed stored hash, and inconsistent chain head;
+  GET search and verify endpoints; focused integration tests; docs. No redaction/archival/
+  export.
+- **What the AI produced:** `AuditEventQueryService` (JPA Specification, cursor over
+  `sequenceNumber`, `MAX_LIMIT=200` clamp) + `EventSearchCriteria`; `AuditEventSearchController`
+  (`GET /api/v1/audit/events`) with `EventView`/`EventPageResponse`; `ChainVerificationService`
+  + `ChainViolationType` + `ChainVerificationResult`; `AuditVerifyController`
+  (`GET /api/v1/audit/verify`, always 200); repository additions
+  (`JpaSpecificationExecutor`, `findAllByOrderBySequenceNumberAsc`). ADR 0005 records it.
+- **Verification design:** recomputes each record's content hash from stored fields with the
+  same canonical scheme (ADR 0003); reports the first inconsistency in walk order; six
+  violation types incl. chain-head consistency. Modified field and modified payload both map to
+  `CONTENT_HASH_MISMATCH` (payload is a hashed field) — documented, not a gap.
+- **Defense-in-depth finding:** the V1 CHECK constraints block bad-hash-length and
+  genesis-with-previous-hash at the storage layer, so those states can't normally be written.
+  The verifier still checks them (last line of defense for a tampered restore / a DB without
+  CHECKs); tests temporarily drop the CHECK to exercise the verifier, then restore it.
+- **Accepted / Rejected:** accepted cursor-over-monotonic-sequence pagination (stable under
+  concurrent inserts) over offset; accepted always-200 verify (a broken chain is a valid
+  answer, not an HTTP error). No redaction/archival/export added (out of scope).
+- **Correctness fixes made in review (engineer-directed):**
+  1. Verification now runs `@Transactional(readOnly=true, isolation=REPEATABLE_READ)` so the
+     event scan and head read share one snapshot — no false `CHAIN_HEAD_MISMATCH` from a
+     concurrent append. Added a concurrent-append-during-verify test.
+  2. Cursor pagination switched to **limit + 1**: fetch `limit+1`, return `limit`, set
+     `nextCursor` only when the extra row proves another page. Added exact-limit-final-page and
+     one-extra-row tests.
+  3. Explicit param semantics + validation: `cursor` ⇒ `sequenceNumber > cursor`; always sort
+     ascending; `limit <= 0` ⇒ 400; `from` must be strictly before `to` ⇒ else 400; `eventType`
+     documented as filtering the stored `action` column.
+- **Validation:** full suite **64 tests, 0 failures**; all six required violation types plus
+  genesis-link detected at the correct record; pagination stable (limit+1) with correct
+  `nextCursor`; concurrent-append verification never false-breaks.
+- **Human sign-off:** _<PENDING: Raghavendra to review/approve>_
+
 ---
 
 ## How to read this log going forward
