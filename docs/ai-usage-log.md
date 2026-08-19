@@ -583,6 +583,59 @@ below because they are the clearest evidence of engineer-led, AI-accelerated wor
 
 ---
 
+### AI-019 — Request & security hardening (Commit A of the security/observability pass)
+
+- **Intent:** production-readiness hardening of request handling and HTTP security, scoped to a
+  single focused commit. AI drafted an implementation plan; the engineer reviewed it and returned
+  13 precise corrections before any code was written (recorded below), then approved implementing
+  Commit A only.
+- **AI produced:** a streaming `RequestBodySizeLimitFilter` (413; early Content-Length check +
+  byte-counting `ServletInputStream` wrapper for chunked/unknown-length bodies, never caching the
+  body); Jackson `StreamReadConstraints` (depth 32 / string 64 KiB / number 128) applied via a Boot
+  `JsonFactoryBuilderCustomizer` so the request mapper is hardened without replacing Boot's other
+  Jackson config; bounded `redactableFields` (count/length/syntax); an `audit.docs.*` property that
+  gates springdoc + the security matrix (default off; local public; enabled-private → ADMIN);
+  pinned `server.error.*=never`; `Referrer-Policy` + `Permissions-Policy` headers with HSTS
+  HTTPS-only and no CSP; explicit CORS deny; a `proxy` profile for forwarded-header trust (off by
+  default); and a cross-platform private-key permission check in `Ed25519Signer` (POSIX fail-closed
+  outside local/test, non-POSIX documented ACL reliance).
+- **Accepted / Modified / Rejected (engineer corrections applied before coding):**
+  - Rejected the claim that `server.tomcat.max-http-form-post-size` bounds JSON, and rejected
+    `max-swallow-size` as the primary control → replaced with the raw streaming filter.
+  - Required stream constraints be applied to the ACTUAL request mapper and NOT replace Boot's
+    Jackson config → used `JsonFactoryBuilderCustomizer`.
+  - Reclassified public Swagger from P0 to P1 defense-in-depth; required a simple property toggle
+    (not competing `SecurityFilterChain` beans).
+  - Required forwarded-header trust be profile-gated (not base config) and documented (proxy must
+    overwrite inbound headers; direct access restricted).
+  - Required the security-header delta be precise (record defaults; add only Referrer-Policy +
+    Permissions-Policy; HSTS HTTPS-only; no CSP without live Swagger verification).
+  - Required cross-platform key-permission handling (POSIX fail-closed vs warn by profile;
+    non-POSIX explicit + documented) and that the key is never logged.
+  - Required NO arbitrary Hikari tuning and NO rate-limiting code or disabled placeholder tests in
+    this commit — both honored (rate limiting documented as deferred with rationale only).
+- **Post-review refactor (engineer-directed):** the POSIX permission-evaluation *decision* was
+  extracted into a pure, platform-independent function (`SigningKeyPermissionPolicy.evaluate`) so it
+  is unit-testable on every OS. Added 7 cross-platform unit tests (owner-only → safe; group-read,
+  group-write, other-read, other-write → unsafe; local/test → warn/allow; non-local → fail-closed).
+  The filesystem attribute-view integration test remains conditionally skipped on non-POSIX systems.
+- **Engineer validation:** offline `compile`/`test-compile`, then full `./mvnw clean verify` against
+  real PostgreSQL (Testcontainers): **167 tests, 0 failures, 3 skipped**. The 25 new tests cover
+  413 on declared-length and chunked oversized bodies, at-limit success, depth/string/number → 400,
+  error bodies never echoing the payload, redactable count/path/syntax → 400, security headers
+  present, HSTS absent over HTTP, forwarded headers untrusted by default, Swagger disabled-by-
+  default / public-under-local / ADMIN-only-when-enabled-private, and POSIX key-permission
+  fail-closed vs warn. The 3 skips are the POSIX-only key-permission tests, correctly skipped on the
+  Windows (NTFS) dev filesystem via a JUnit assumption; they execute on POSIX/CI.
+- **Backward compatibility:** additive. API keys, endpoint contracts, and all previously-passing
+  tests are unchanged. The only behavioral changes are that the docs surface is no longer public by
+  default and oversized/pathological request bodies are now rejected (with generous defaults).
+- **Not in this commit (deferred, documented):** OAuth2/OIDC JWT auth, Actuator/metrics/structured
+  logging (later commits), and rate limiting (production requirement, deferred with rationale).
+- **Human sign-off:** Reviewed and approved by Raghavendra Begur Rangaramu on 2026-08-19.
+
+---
+
 ## How to read this log going forward
 
 Each future task (implementation, tests, refactors) will get its own `AI-0xx` entry

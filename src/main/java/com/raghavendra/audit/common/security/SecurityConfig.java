@@ -1,5 +1,7 @@
 package com.raghavendra.audit.common.security;
 
+import com.raghavendra.audit.common.config.HardeningProperties;
+import com.raghavendra.audit.common.web.RequestBodySizeLimitFilter;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -8,9 +10,11 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter;
 
 /**
- * API-key authentication and per-endpoint authorization (the authorization matrix).
+ * API-key authentication and per-endpoint authorization (the authorization matrix), plus the
+ * request/security hardening wired in Commit A.
  *
  * <p>Authentication is by {@code X-API-Key} (see {@link ApiKeyAuthFilter}); the role is resolved
  * server-side. The client never supplies its own role. Missing/invalid key → 401; wrong role →
@@ -23,23 +27,61 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
  *   GET    /api/v1/audit/events            COMPLIANCE_READER, ADMIN
  *   GET    /api/v1/audit/verify            COMPLIANCE_READER, ADMIN
  *   GET    /api/v1/compliance/access-report COMPLIANCE_READER, ADMIN
- *   (OpenAPI/Swagger docs are public for the prototype)
  * </pre>
+ *
+ * <p><strong>Hardening (Commit A):</strong>
+ * <ul>
+ *   <li>Response security headers: Spring Security's defaults ({@code X-Content-Type-Options:
+ *       nosniff}, {@code X-Frame-Options: DENY}, {@code Cache-Control}) are retained, and
+ *       {@code Referrer-Policy: no-referrer} + a restrictive {@code Permissions-Policy} are added.
+ *       HSTS is emitted only over HTTPS (Spring Security's default {@code requiresSecure} behavior),
+ *       so it has no effect on plain-HTTP local runs. No CSP is added (the docs UI is gated
+ *       separately and a CSP is only worth adding once verified against a live Swagger UI).</li>
+ *   <li>CORS is explicitly disabled — no browser front-end consumes this API today, so no
+ *       cross-origin access is granted. Recorded as a deliberate decision, not an omission.</li>
+ *   <li>OpenAPI/Swagger exposure is driven by {@code audit.docs.*}: public only when
+ *       {@code enabled=true} AND {@code public=true}; if {@code enabled=true} and
+ *       {@code public=false}, the docs require ADMIN; otherwise they fall through to
+ *       {@code denyAll()}. This is a single filter chain consulting a property — not competing
+ *       chains.</li>
+ *   <li>A streaming {@link RequestBodySizeLimitFilter} caps request-body size before controllers
+ *       read the body.</li>
+ * </ul>
  */
 @Configuration
-@EnableConfigurationProperties(ApiKeyProperties.class)
+@EnableConfigurationProperties({ApiKeyProperties.class, HardeningProperties.class})
 public class SecurityConfig {
 
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http, ApiKeyService apiKeyService)
-            throws Exception {
+    public SecurityFilterChain securityFilterChain(HttpSecurity http, ApiKeyService apiKeyService,
+                                                   HardeningProperties hardening) throws Exception {
+        boolean docsEnabled = hardening.getDocs().isEnabled();
+        boolean docsPublic = docsEnabled && hardening.getDocs().isPublic();
+
         http
                 .csrf(csrf -> csrf.disable()) // stateless API-key auth; no browser session/CSRF
+                // No browser front-end consumes this API; deny cross-origin browser access.
+                .cors(cors -> cors.disable())
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .authorizeHttpRequests(auth -> auth
-                        // Public: API docs (prototype convenience).
-                        .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html")
-                            .permitAll()
+                // Retain Spring Security's default headers (nosniff, X-Frame-Options: DENY,
+                // Cache-Control) and add Referrer-Policy + Permissions-Policy. HSTS is left at its
+                // default, which only applies over HTTPS, so plain-HTTP local runs are unaffected.
+                .headers(headers -> headers
+                        .referrerPolicy(rp -> rp.policy(
+                                ReferrerPolicyHeaderWriter.ReferrerPolicy.NO_REFERRER))
+                        .permissionsPolicyHeader(pp -> pp.policy(PERMISSIONS_POLICY)))
+                .authorizeHttpRequests(auth -> {
+                    // OpenAPI/Swagger — gated by audit.docs.*.
+                    String[] docPaths = {"/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html"};
+                    if (docsPublic) {
+                        auth.requestMatchers(docPaths).permitAll();
+                    } else if (docsEnabled) {
+                        auth.requestMatchers(docPaths).hasRole(ApiRole.ADMIN.name());
+                    }
+                    // When docs are disabled entirely, no rule is added here, so the doc paths
+                    // fall through to denyAll() below (and springdoc is also switched off).
+
+                    auth
                         // Redaction — ADMIN only. (Declared BEFORE the write rule so the more
                         // specific path wins.)
                         .requestMatchers(HttpMethod.POST, "/api/v1/audit/events/*/redact")
@@ -65,7 +107,12 @@ public class SecurityConfig {
                         // DENY everything not explicitly allowed above. This is a fail-closed
                         // default: a newly added endpoint is denied until an explicit rule
                         // grants access, so it can never be accidentally public.
-                        .anyRequest().denyAll())
+                        .anyRequest().denyAll();
+                })
+                // Enforce the request-body size cap before authentication/authorization read the
+                // body. Placed before the API-key filter (and thus before controller binding).
+                .addFilterBefore(new RequestBodySizeLimitFilter(hardening),
+                        UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(new ApiKeyAuthFilter(apiKeyService),
                         UsernamePasswordAuthenticationFilter.class)
                 .exceptionHandling(ex -> ex
@@ -77,4 +124,12 @@ public class SecurityConfig {
 
         return http.build();
     }
+
+    /**
+     * Restrictive Permissions-Policy: deny the common powerful browser features. This API is not
+     * consumed by a browser front-end, so no feature is granted.
+     */
+    private static final String PERMISSIONS_POLICY =
+            "geolocation=(), microphone=(), camera=(), payment=(), usb=(), "
+            + "accelerometer=(), gyroscope=(), magnetometer=(), fullscreen=()";
 }

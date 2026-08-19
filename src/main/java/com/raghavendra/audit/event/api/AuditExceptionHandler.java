@@ -1,5 +1,6 @@
 package com.raghavendra.audit.event.api;
 
+import com.raghavendra.audit.common.web.PayloadTooLargeException;
 import com.raghavendra.audit.event.application.DuplicateEventIdException;
 import com.raghavendra.audit.redaction.RedactionException;
 import com.raghavendra.audit.retention.ArchiveException;
@@ -32,12 +33,48 @@ public class AuditExceptionHandler {
                         "Request validation failed", details));
     }
 
-    /** Malformed / unreadable JSON body → 400. */
+    /**
+     * Request body over the configured size limit → 413.
+     *
+     * <p>Raised by the streaming {@code RequestBodySizeLimitFilter} when a chunked / unknown-length
+     * body exceeds the cap while being read. The response is a safe, generic message; no received
+     * bytes are echoed.
+     */
+    @ExceptionHandler(PayloadTooLargeException.class)
+    public ResponseEntity<ApiError> handlePayloadTooLarge(PayloadTooLargeException ex) {
+        return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE).body(
+                ApiError.of(HttpStatus.PAYLOAD_TOO_LARGE.value(), "Payload Too Large",
+                        "Request body exceeds the maximum permitted size", List.of()));
+    }
+
+    /**
+     * Malformed / unreadable JSON body → 400.
+     *
+     * <p>This also covers Jackson stream-constraint violations (excessive nesting depth, string
+     * length, or number length), which surface as a parse failure. The response is a safe, static
+     * message — the offending payload is never echoed. If the underlying cause is actually a
+     * body-size overrun (the streaming limit throwing mid-parse), it is re-mapped to 413 so the
+     * size limit is reported accurately rather than as a generic 400.
+     */
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<ApiError> handleUnreadable(HttpMessageNotReadableException ex) {
+        if (hasPayloadTooLargeCause(ex)) {
+            return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE).body(
+                    ApiError.of(HttpStatus.PAYLOAD_TOO_LARGE.value(), "Payload Too Large",
+                            "Request body exceeds the maximum permitted size", List.of()));
+        }
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(
                 ApiError.of(HttpStatus.BAD_REQUEST.value(), "Bad Request",
                         "Malformed request body", List.of()));
+    }
+
+    private static boolean hasPayloadTooLargeCause(Throwable ex) {
+        for (Throwable t = ex; t != null; t = t.getCause()) {
+            if (t instanceof PayloadTooLargeException) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** Invalid search query parameters (limit, time range) → 400. */

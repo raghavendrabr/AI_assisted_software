@@ -30,6 +30,12 @@ API-level attackers.
 | **Client-supplied role escalation** | role never accepted from the client; resolved server-side | — |
 | **Weak/duplicate key config** | fail-fast on duplicate/multi-role keys; whitespace treated as unset | startup abort |
 | **Deployed with no signing key** | ephemeral key only under local/test; else fail closed | startup abort |
+| **Oversized request body** (memory/CPU exhaustion) | streaming byte cap on write endpoints (`audit.limits.max-request-bytes`, default 64 KiB), incl. chunked/unknown-length | 413 |
+| **Deeply-nested / huge-token JSON** (parser exhaustion) | Jackson `StreamReadConstraints` (depth 32, string 64 KiB, number 128) on the request mapper, before a `JsonNode` is built | safe 400 |
+| **Unbounded redactable-field set** | Bean Validation bounds count (≤64) + per-path length (≤128) + identifier syntax | 400 |
+| **Endpoint discovery via public API docs** | OpenAPI/Swagger off by default; when on, public only if explicitly configured, else ADMIN-only (`audit.docs.*`) | 401/403 |
+| **Spoofed forwarding headers** (fake client IP/scheme) | `X-Forwarded-*` NOT trusted by default (`forward-headers-strategy: none`); trusted only under the `proxy` profile behind a proxy that overwrites inbound headers | ignored by default |
+| **World-readable signing-key file** | POSIX perm check on the private key: fail-closed outside local/test, warn under local/test; non-POSIX relies on platform ACLs | startup abort (deployed) |
 
 ## Residual risks / assumptions
 
@@ -44,4 +50,17 @@ API-level attackers.
 - **Key management:** file/ephemeral keys are prototype-grade; production needs a KMS/secret manager,
   key rotation, and trusted public-key distribution (a `signingKeyId` is a hint, not trust — ADR 0009).
 - **Transport security:** TLS/mTLS is assumed to be terminated by the deployment environment; not
-  configured in the prototype.
+  configured in the prototype. HSTS is emitted only over HTTPS, so it is inert on plain-HTTP local
+  runs and takes effect once TLS is terminated in front of (or at) the service.
+- **Response headers:** Spring Security defaults (`X-Content-Type-Options: nosniff`,
+  `X-Frame-Options: DENY`, `Cache-Control`) are retained; `Referrer-Policy: no-referrer` and a
+  restrictive `Permissions-Policy` are added. No Content-Security-Policy is set — this is a JSON
+  API with no first-party browser UI, and a CSP would only be added after live verification against
+  the (optional) Swagger UI.
+- **CORS:** disabled by explicit decision — no browser front-end consumes this API, so no
+  cross-origin access is granted (recorded, not omitted).
+- **Rate limiting / brute-force throttling:** still **not implemented**. This is acknowledged as a
+  production requirement, deferred with rationale: it belongs at the API gateway / reverse proxy
+  tier (or a shared store for multi-instance correctness), not in the single-instance prototype.
+  Constant-time API-key comparison already removes a timing side-channel, but request-rate abuse is
+  unmitigated in-process. Tracked as future work.

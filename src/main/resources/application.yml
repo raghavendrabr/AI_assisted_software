@@ -39,14 +39,25 @@ spring:
 
 server:
   port: ${AUDIT_SERVER_PORT:8080}
+  # Fail-closed error responses: never expose the exception message, stack trace, or binding
+  # details to clients. These are already the Spring Boot defaults; pinned explicitly so a future
+  # default change cannot silently start leaking internals.
+  error:
+    include-message: never
+    include-stacktrace: never
+    include-binding-errors: never
+  # Forwarded headers are NOT trusted by default. Trusting X-Forwarded-* without a trusted proxy
+  # in front lets a client spoof its address/scheme. Enable ONLY behind a proxy that overwrites
+  # inbound forwarding headers, via the 'proxy' profile (application-proxy.yml).
+  forward-headers-strategy: none
 
-# springdoc / Swagger UI is on the classpath for later API documentation.
-# Left at defaults; documented endpoints will appear once controllers exist.
+# springdoc / Swagger UI. Enablement tracks audit.docs.enabled so the docs surface is off by
+# default (and, when on, its authorization is governed by audit.docs.public in SecurityConfig).
 springdoc:
   api-docs:
-    enabled: true
+    enabled: ${audit.docs.enabled:false}
   swagger-ui:
-    enabled: true
+    enabled: ${audit.docs.enabled:false}
 
 # -----------------------------------------------------------------------------
 # API-key -> role mappings. Keys come from ENVIRONMENT VARIABLES — NO real keys are
@@ -62,6 +73,24 @@ audit:
         role: COMPLIANCE_READER
       - key: ${AUDIT_ADMIN_KEY:}
         role: ADMIN
+  # Request/security hardening bounds (Commit A). Defaults comfortably fit legitimate audit
+  # events; oversized or pathologically-nested bodies are rejected before parsing/persisting.
+  limits:
+    max-request-bytes: ${AUDIT_MAX_REQUEST_BYTES:65536}          # 64 KiB raw body cap (413 over)
+    max-json-depth: ${AUDIT_MAX_JSON_DEPTH:32}                   # JSON nesting depth (400 over)
+    max-json-string-length: ${AUDIT_MAX_JSON_STRING_LENGTH:65536}
+    max-json-number-length: ${AUDIT_MAX_JSON_NUMBER_LENGTH:128}
+    max-redactable-fields: ${AUDIT_MAX_REDACTABLE_FIELDS:64}
+    max-redactable-field-path-length: ${AUDIT_MAX_REDACTABLE_FIELD_PATH_LENGTH:128}
+
+  # OpenAPI/Swagger exposure. Fail-closed by default: not served, not public. The 'local' profile
+  # turns it on and makes it public for developer convenience. If enabled but not public, the docs
+  # require ADMIN (see SecurityConfig). 'public' is a YAML reserved-looking key but binds fine to
+  # HardeningProperties.Docs.setPublic.
+  docs:
+    enabled: ${AUDIT_DOCS_ENABLED:false}
+    public: ${AUDIT_DOCS_PUBLIC:false}
+
   # Compliance: which resourceType denotes client-account data (Scenario C in-scope slice).
   compliance:
     client-account-resource-type: ${AUDIT_CLIENT_ACCOUNT_RESOURCE_TYPE:CLIENT_ACCOUNT}
@@ -78,3 +107,22 @@ audit:
 logging:
   level:
     root: INFO
+
+# =============================================================================
+# Profile: local
+#
+# Developer convenience only. Turns the OpenAPI/Swagger surface on and makes it public so a
+# developer can browse the API at http://localhost:8080/swagger-ui.html without a key. This block
+# is committed (unlike the git-ignored application-local.yml) so the local docs behavior is
+# consistent and version-controlled. It changes NOTHING outside the 'local' profile — the default
+# profile keeps docs disabled and non-public.
+# =============================================================================
+---
+spring:
+  config:
+    activate:
+      on-profile: local
+audit:
+  docs:
+    enabled: true
+    public: true
