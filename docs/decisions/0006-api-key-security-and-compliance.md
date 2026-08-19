@@ -87,4 +87,4 @@ completeness) are documented in `docs/requirements/scenario-c.md`.
 - Existing tests updated to send the appropriate `X-API-Key`.
 
 ## Engineer sign-off
-_<PENDING: Raghavendra to review/approve the security and compliance design>_
+Reviewed and approved by Raghavendra Begur Rangaramu on 2026-08-18.

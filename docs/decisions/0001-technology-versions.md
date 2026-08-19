@@ -104,4 +104,4 @@ project with a known Maven version and no prior Maven install.
 
 ## Engineer sign-off
 
-_<PENDING: Raghavendra to review/approve the version decisions and sources above>_
+Reviewed and approved by Raghavendra Begur Rangaramu on 2026-08-18.

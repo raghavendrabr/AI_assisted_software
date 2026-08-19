@@ -7,9 +7,9 @@
 > then human-reviewed and corrected** — they are recorded as such, not as purely
 > human-originated.
 >
-> **Sign-off convention.** Each entry ends with a human sign-off line. Where it reads
-> `_<PENDING: Raghavendra to review/approve>_`, the engineer has not yet formally signed
-> off. Placeholders are intentional and must be completed by the engineer.
+> **Sign-off convention.** Each entry ends with a human sign-off line recording that the
+> engineer reviewed and approved that entry's AI-assisted work. All entries have been signed
+> off (Reviewed and approved by Raghavendra Begur Rangaramu on 2026-08-18).
 
 - **AI tools used:** Claude (Anthropic) via an AI coding assistant, for planning,
   drafting documentation, and adversarial design review.
@@ -41,7 +41,7 @@ below because they are the clearest evidence of engineer-led, AI-accelerated wor
 - **Modified / Rejected:** See AI-002…AI-007 below — several specifics were corrected in review.
 - **Engineer validation:** Reviewed against the assignment text; directed the
   subsequent correction rounds.
-- **Human sign-off:** _<PENDING: Raghavendra to review/approve>_
+- **Human sign-off:** Reviewed and approved by Raghavendra Begur Rangaramu on 2026-08-18.
 
 ### AI-002 — Framework version (AI initially wrong; corrected in review)
 
@@ -56,7 +56,7 @@ below because they are the clearest evidence of engineer-led, AI-accelerated wor
   `pom.xml` scaffold time; record in an ADR.
 - **Rejected:** the original "Spring Boot 3" + springdoc 2.8.x pairing.
 - **Engineer validation:** required version verification against official docs, not memory.
-- **Human sign-off:** _<PENDING: Raghavendra to review/approve>_
+- **Human sign-off:** Reviewed and approved by Raghavendra Begur Rangaramu on 2026-08-18.
 
 ### AI-003 — Redaction scheme (AI proposal reworked twice in review)
 
@@ -78,7 +78,7 @@ below because they are the clearest evidence of engineer-led, AI-accelerated wor
   crypto-erasure documented as the production alternative.
 - **Rejected:** crypto-erasure as the prototype default; any claim that redacted
   plaintext is unrecoverable.
-- **Human sign-off:** _<PENDING: Raghavendra to review/approve>_
+- **Human sign-off:** Reviewed and approved by Raghavendra Begur Rangaramu on 2026-08-18.
 
 ### AI-004 — Authorized redaction vs. tampering; immutability & hash coverage of state (engineer-driven correction)
 
@@ -94,7 +94,7 @@ below because they are the clearest evidence of engineer-led, AI-accelerated wor
   transition, via an atomic amendment-backed operation.
 - **Accepted:** two-chain design; corrected immutability wording.
 - **Rejected:** single-mutable-record model; "strictly immutable row" phrasing.
-- **Human sign-off:** _<PENDING: Raghavendra to review/approve>_
+- **Human sign-off:** Reviewed and approved by Raghavendra Begur Rangaramu on 2026-08-18.
 
 ### AI-005 — Bulk-export proof (AI proposal rejected and replaced in review)
 
@@ -112,7 +112,7 @@ below because they are the clearest evidence of engineer-led, AI-accelerated wor
 - **Accepted:** Ed25519 signed-manifest design; dedicated key from env-mounted secret;
   non-production dev keypair clearly labeled if needed for zero-config demos.
 - **Rejected:** neighbor-witness/`bundleHash` design; any reuse of the API key for signing.
-- **Human sign-off:** _<PENDING: Raghavendra to review/approve>_
+- **Human sign-off:** Reviewed and approved by Raghavendra Begur Rangaramu on 2026-08-18.
 
 ### AI-006 — Authentication (engineer-driven correction)
 
@@ -122,7 +122,7 @@ below because they are the clearest evidence of engineer-led, AI-accelerated wor
   committed config carries placeholders only.
 - **Accepted:** server-side key→role mapping; placeholder-only committed config.
 - **Rejected:** trusting any client-supplied role.
-- **Human sign-off:** _<PENDING: Raghavendra to review/approve>_
+- **Human sign-off:** Reviewed and approved by Raghavendra Begur Rangaramu on 2026-08-18.
 
 ### AI-007 — Amendment reference integrity across archival (engineer-driven correction)
 
@@ -136,7 +136,7 @@ below because they are the clearest evidence of engineer-led, AI-accelerated wor
   targets, and archiving already-redacted events.
 - **Accepted:** nullable target, no FK, CHECK constraints, added interaction tests.
 - **Rejected:** physical FK to `audit_event` only.
-- **Human sign-off:** _<PENDING: Raghavendra to review/approve>_
+- **Human sign-off:** Reviewed and approved by Raghavendra Begur Rangaramu on 2026-08-18.
 
 ### AI-008 — This documentation set (AI-drafted, engineer to review)
 
@@ -145,9 +145,11 @@ below because they are the clearest evidence of engineer-led, AI-accelerated wor
   instructions (separate requirements from assumptions; placeholders for personal
   info; honest AI-usage record; README labeled as design-stage with no fake run/test
   claims).
-- **Accepted / Modified / Rejected:** _<PENDING: to be recorded by Raghavendra after reviewing these files>_
-- **Engineer validation:** the engineer will review every file before the first commit is made.
-- **Human sign-off:** _<PENDING: Raghavendra to review/approve>_
+- **Accepted / Modified / Rejected:** Accepted after review — the requirements/assumptions/
+  attestation/AI-log/README/summary-outline files were reviewed and committed as the first
+  commit; personal-info placeholders were intentionally retained for the engineer to complete.
+- **Engineer validation:** the engineer reviewed every file before the first commit was made.
+- **Human sign-off:** Reviewed and approved by Raghavendra Begur Rangaramu on 2026-08-18.
 
 ---
 
@@ -215,7 +217,7 @@ below because they are the clearest evidence of engineer-led, AI-accelerated wor
 - **Engineer validation still pending:** _<Raghavendra to independently review files + re-run
   validation on your machine>_
 
-- **Human sign-off:** _<PENDING: Raghavendra to review/approve>_
+- **Human sign-off:** Reviewed and approved by Raghavendra Begur Rangaramu on 2026-08-18.
 
 ### AI-010 — Maven Wrapper added to the scaffolding commit
 
@@ -249,7 +251,7 @@ below because they are the clearest evidence of engineer-led, AI-accelerated wor
   - `docker compose config` → valid; secret/artifact scan → clean; wrapper files staged,
     `target/` ignored.
 - **Engineer validation still pending:** _<Raghavendra to re-run `./mvnw`/`mvnw.cmd` on your machine>_
-- **Human sign-off:** _<PENDING: Raghavendra to review/approve>_
+- **Human sign-off:** Reviewed and approved by Raghavendra Begur Rangaramu on 2026-08-18.
 
 ## Session 3 — Audit chain schema (Day 1, Commit 3)
 
@@ -297,7 +299,7 @@ below because they are the clearest evidence of engineer-led, AI-accelerated wor
     `audit_event` empty; all 7 audit_event and 5 chain_head constraints + 3 indexes present;
     a bad-hash-length insert was rejected by `ck_audit_event_content_hash_len`.
   - Torn down with `down -v`; `git diff --check` clean; no secrets/artifacts staged.
-- **Human sign-off:** _<PENDING: Raghavendra to review/approve>_
+- **Human sign-off:** Reviewed and approved by Raghavendra Begur Rangaramu on 2026-08-18.
 
 ## Session 4 — Canonical serialization & hashing (Day 1, Commit 4)
 
@@ -347,7 +349,7 @@ below because they are the clearest evidence of engineer-led, AI-accelerated wor
   security code added (out of scope).
 - **Validation:** `./mvnw test -Dtest=CanonicalHashTest` → **21 tests, 0 failures**; full
   suite result recorded below.
-- **Human sign-off:** _<PENDING: Raghavendra to review/approve>_
+- **Human sign-off:** Reviewed and approved by Raghavendra Begur Rangaramu on 2026-08-18.
 
 ## Session 5 — Transactional append & write API (Day 1, Commit 5)
 
@@ -376,7 +378,7 @@ below because they are the clearest evidence of engineer-led, AI-accelerated wor
   the real API-key/role filter. No read/verify/redaction/archival/export added (out of scope).
 - **Validation:** full suite **43 tests, 0 failures**, incl. 25-way concurrent append →
   gap-free strictly-increasing linked chain; duplicate id → 409 with no chain advance.
-- **Human sign-off:** _<PENDING: Raghavendra to review/approve>_
+- **Human sign-off:** Reviewed and approved by Raghavendra Begur Rangaramu on 2026-08-18.
 
 ## Session 6 — Filtered search & chain verification (Day 1, Commit 6)
 
@@ -417,7 +419,7 @@ below because they are the clearest evidence of engineer-led, AI-accelerated wor
 - **Validation:** full suite **64 tests, 0 failures**; all six required violation types plus
   genesis-link detected at the correct record; pagination stable (limit+1) with correct
   `nextCursor`; concurrent-append verification never false-breaks.
-- **Human sign-off:** _<PENDING: Raghavendra to review/approve>_
+- **Human sign-off:** Reviewed and approved by Raghavendra Begur Rangaramu on 2026-08-18.
 
 ## Session 7 — API-key security & compliance reporting (Day 1, Commit 7)
 
@@ -452,7 +454,7 @@ below because they are the clearest evidence of engineer-led, AI-accelerated wor
 - **Validation:** full suite **83 tests, 0 failures**; 401/403/2xx enforced per role;
   unlisted endpoint denied; duplicate/multi-role key configs fail fast; success+denied
   client-account reporting with filters; existing tests updated to send keys.
-- **Human sign-off:** _<PENDING: Raghavendra to review/approve>_
+- **Human sign-off:** Reviewed and approved by Raghavendra Begur Rangaramu on 2026-08-18.
 
 ## Session 8 — Amendment chain & structured redaction (Day 1, Commit 8)
 
@@ -491,7 +493,7 @@ below because they are the clearest evidence of engineer-led, AI-accelerated wor
   5. atomic rollback: a failed redaction writes nothing (both chains unchanged).
 - **Validation:** full suite **101 tests, 0 failures** (added `RedactablePayloadProcessorTest`
   (6) + 3 integration checks: concurrent-one-succeeds, atomic-rollback, no-plaintext-in-amendment).
-- **Human sign-off:** _<PENDING: Raghavendra to review/approve>_
+- **Human sign-off:** Reviewed and approved by Raghavendra Begur Rangaramu on 2026-08-18.
 
 ## Session 9 — Retention & archival (Day 1, Commit 9)
 
@@ -531,7 +533,7 @@ below because they are the clearest evidence of engineer-led, AI-accelerated wor
   active+archive detected; failed archive rolls back leaving active/archive/manifest/amendment and
   both chain-head tips unchanged.
 - **Validation:** full suite **117 tests, 0 failures**.
-- **Human sign-off:** _<PENDING: Raghavendra to review/approve>_
+- **Human sign-off:** Reviewed and approved by Raghavendra Begur Rangaramu on 2026-08-18.
 
 ## Session 10 — Ed25519-signed bulk export (Day 1, Commit 10)
 
@@ -577,7 +579,7 @@ below because they are the clearest evidence of engineer-led, AI-accelerated wor
   incl. archived+redacted; modified/reordered/removed event and amendment, redacted-without-
   amendment, non-matching injected event, duplicate event, tampered manifest, wrong public key all
   rejected; missing production key fails closed; export COMPLIANCE_READER/ADMIN-gated.
-- **Human sign-off:** _<PENDING: Raghavendra to review/approve>_
+- **Human sign-off:** Reviewed and approved by Raghavendra Begur Rangaramu on 2026-08-18.
 
 ---
 

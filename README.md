@@ -173,7 +173,7 @@ These map to the three assignment scenarios. **None are implemented yet.**
 ```
 .
 ├── README.md                     <- this file
-├── ATTESTATION.md                <- authorship attestation (placeholders to be completed)
+├── ATTESTATION.md                <- authorship attestation
 ├── mvnw, mvnw.cmd                <- Maven Wrapper (pinned to Apache Maven 3.9.9)
 ├── .mvn/wrapper/maven-wrapper.properties  <- wrapper config (committed)
 ├── pom.xml                       <- Maven build (Spring Boot 4.1.0 parent; BOM-governed deps)

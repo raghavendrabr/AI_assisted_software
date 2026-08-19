@@ -111,4 +111,4 @@ persist/reread round-trip does not change the canonical form; `Z` rendering with
 protected field changes the hash.
 
 ## Engineer sign-off
-_<PENDING: Raghavendra to review/approve the canonicalization and hash formula>_
+Reviewed and approved by Raghavendra Begur Rangaramu on 2026-08-18.

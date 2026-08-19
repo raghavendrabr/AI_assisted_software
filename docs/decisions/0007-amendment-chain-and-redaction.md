@@ -99,4 +99,4 @@ eventId/field; no plaintext in hash payload/commitment/amendment; concurrent sam
 key → 401).
 
 ## Engineer sign-off
-_<PENDING: Raghavendra to review/approve the amendment-chain and redaction design>_
+Reviewed and approved by Raghavendra Begur Rangaramu on 2026-08-18.

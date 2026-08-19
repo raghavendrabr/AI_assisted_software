@@ -90,4 +90,4 @@ sequence, invalid hash length, invalid previous-hash rule, duplicate event id, a
 duplicate sequence number are all rejected.
 
 ## Engineer sign-off
-_<PENDING: Raghavendra to review/approve the schema and constraint decisions>_
+Reviewed and approved by Raghavendra Begur Rangaramu on 2026-08-18.

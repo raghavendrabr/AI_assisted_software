@@ -94,4 +94,4 @@ missing-field → 400 (nothing persisted), malformed JSON → 400, no update/del
 advance (rollback), 25 concurrent appends → gap-free strictly-increasing linked chain.
 
 ## Engineer sign-off
-_<PENDING: Raghavendra to review/approve the append design and API>_
+Reviewed and approved by Raghavendra Begur Rangaramu on 2026-08-18.

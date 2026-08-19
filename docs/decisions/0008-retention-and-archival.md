@@ -94,4 +94,4 @@ archived event with the chain intact; concurrent archive attempts move each reco
 with the chain intact.
 
 ## Engineer sign-off
-_<PENDING: Raghavendra to review/approve the retention & archival design>_
+Reviewed and approved by Raghavendra Begur Rangaramu on 2026-08-18.

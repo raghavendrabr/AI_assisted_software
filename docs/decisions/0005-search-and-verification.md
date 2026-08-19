@@ -74,4 +74,4 @@ verifier's own logic, then restore it so DDL never leaks across tests.
   hash, inconsistent chain head, and genesis-link violation is detected at the correct record.
 
 ## Engineer sign-off
-_<PENDING: Raghavendra to review/approve the search and verification design>_
+Reviewed and approved by Raghavendra Begur Rangaramu on 2026-08-18.

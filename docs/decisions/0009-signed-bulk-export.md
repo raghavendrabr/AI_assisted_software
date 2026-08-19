@@ -76,4 +76,4 @@ public key are all rejected. `ApiKeySecurityIntegrationTest`: export is COMPLIAN
 (WRITER → 403, no key → 401).
 
 ## Engineer sign-off
-_<PENDING: Raghavendra to review/approve the signed-export design>_
+Reviewed and approved by Raghavendra Begur Rangaramu on 2026-08-18.
