@@ -71,3 +71,6 @@ export-signing-*
 .gradle/
 coverage/
 *.exec
+
+# Local Claude Code settings (developer machine only)
+.claude/

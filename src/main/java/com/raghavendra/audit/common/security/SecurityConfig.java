@@ -1,6 +1,9 @@
 package com.raghavendra.audit.common.security;
 
 import com.raghavendra.audit.common.config.HardeningProperties;
+import com.raghavendra.audit.common.security.jwt.AuditJwtDecoderFactory;
+import com.raghavendra.audit.common.security.jwt.JwtProperties;
+import com.raghavendra.audit.common.security.jwt.JwtScopeRoleConverter;
 import com.raghavendra.audit.common.web.RequestBodySizeLimitFilter;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -8,6 +11,9 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
+import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter;
@@ -54,7 +60,12 @@ public class SecurityConfig {
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http, ApiKeyService apiKeyService,
-                                                   HardeningProperties hardening) throws Exception {
+                                                   HardeningProperties hardening,
+                                                   AuthEventLogger authLog,
+                                                   JwtProperties jwtProperties,
+                                                   JwtScopeRoleConverter scopeRoleConverter,
+                                                   tools.jackson.databind.ObjectMapper objectMapper)
+            throws Exception {
         boolean docsEnabled = hardening.getDocs().isEnabled();
         boolean docsPublic = docsEnabled && hardening.getDocs().isPublic();
 
@@ -113,14 +124,45 @@ public class SecurityConfig {
                 // body. Placed before the API-key filter (and thus before controller binding).
                 .addFilterBefore(new RequestBodySizeLimitFilter(hardening),
                         UsernamePasswordAuthenticationFilter.class)
-                .addFilterBefore(new ApiKeyAuthFilter(apiKeyService),
+                // Reject ambiguous both-credentials requests (Bearer + X-API-Key) with 400, before
+                // either authentication mechanism runs.
+                .addFilterBefore(new DualCredentialGuardFilter(authLog, objectMapper),
+                        UsernamePasswordAuthenticationFilter.class)
+                // API-key authentication. It never overwrites a JWT authentication and never falls
+                // back when a Bearer token is present (see ApiKeyAuthFilter).
+                .addFilterBefore(new ApiKeyAuthFilter(apiKeyService, authLog),
                         UsernamePasswordAuthenticationFilter.class)
                 .exceptionHandling(ex -> ex
                         // No/invalid key (unauthenticated) → 401; authenticated but wrong role → 403.
-                        .authenticationEntryPoint((request, response, authEx) ->
-                                response.sendError(jakarta.servlet.http.HttpServletResponse.SC_UNAUTHORIZED))
-                        .accessDeniedHandler((request, response, deniedEx) ->
-                                response.sendError(jakarta.servlet.http.HttpServletResponse.SC_FORBIDDEN)));
+                        // Use setStatus (not sendError): sendError triggers an internal ERROR
+                        // dispatch to /error, which re-enters the security chain as anonymous, hits
+                        // denyAll(), and would overwrite a 403 with a 401. setStatus writes the
+                        // status directly with no body and no error forward.
+                        .authenticationEntryPoint((request, response, authEx) -> {
+                            response.setStatus(jakarta.servlet.http.HttpServletResponse.SC_UNAUTHORIZED);
+                            response.getWriter().flush();
+                        })
+                        .accessDeniedHandler((request, response, deniedEx) -> {
+                            response.setStatus(jakarta.servlet.http.HttpServletResponse.SC_FORBIDDEN);
+                            response.getWriter().flush();
+                        }));
+
+        // Conditional JWT resource server: wired ONLY when JWT is enabled AND complete. Otherwise
+        // the service runs API-key-only, and any Bearer token is rejected as unauthenticated (401)
+        // because no resource server is configured to accept it.
+        if (jwtProperties.isComplete()) {
+            JwtDecoder decoder = AuditJwtDecoderFactory.build(jwtProperties);
+            JwtAuthenticationConverter converter = new JwtAuthenticationConverter();
+            converter.setJwtGrantedAuthoritiesConverter(scopeRoleConverter::convert);
+            http.oauth2ResourceServer(oauth2 -> oauth2
+                    .jwt(jwt -> jwt
+                            .decoder(decoder)
+                            .jwtAuthenticationConverter(converter)));
+            // Log JWT auth SUCCESS (fingerprint only) after the Bearer filter authenticates. JWT
+            // FAILURES are surfaced by the resource server (401 + WWW-Authenticate: Bearer).
+            http.addFilterAfter(new JwtAuthEventLoggingFilter(authLog),
+                    BearerTokenAuthenticationFilter.class);
+        }
 
         return http.build();
     }

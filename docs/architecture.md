@@ -82,7 +82,9 @@ amendment. See ADR 0002/0007/0008.
 
 ## 6. API design
 
-Base path `/api/v1`. All endpoints require an `X-API-Key` (role resolved server-side).
+Base path `/api/v1`. All endpoints require authentication — an `X-API-Key` (role resolved
+server-side) or, when JWT mode is enabled, an OAuth2/OIDC `Bearer` token whose trusted scopes map to
+the same roles (ADR 0011). Supplying both is rejected with 400.
 
 | Endpoint | Method | Role | Purpose |
 |---|---|---|---|
@@ -109,12 +111,26 @@ with `denyAll()`, so a new endpoint is denied until an explicit rule grants it.
 
 ## 8. Security posture
 
-- **Authentication:** `X-API-Key` → role resolved server-side (SHA-256 + constant-time compare);
-  client never supplies a role. 401 = unauthenticated, 403 = wrong role. Fail-fast on duplicate/
-  multi-role key config. No real keys committed (env placeholders).
+- **Authentication (dual-mode):** `X-API-Key` → role resolved server-side (SHA-256 + constant-time
+  compare); client never supplies a role. Optional OAuth2/OIDC **JWT** mode (`audit.security.jwt.*`,
+  off by default) validates signature + algorithm allow-list + issuer + audience + exp/nbf, and maps
+  only trusted scopes (`audit.write|read|admin`) to roles — client `roles`/`authorities` claims are
+  ignored, no default role (ADR 0011). Both filters feed the **same** authorization matrix and
+  `denyAll()`. Dual-credential requests → 400; an invalid Bearer never falls back to an API key.
+  401 = unauthenticated, 403 = wrong role/scope.
+- **Conditional activation & fail-fast:** JWT enabled-but-incomplete fails startup; API-key config
+  fails fast on duplicate/multi-role keys and duplicate/invalid key ids. No real keys committed
+  (env placeholders).
+- **Auditability:** each API key has a stable, non-secret **key id**; sanitized auth logs record
+  method/result/reason/requestId + key id or JWT-subject fingerprint — never the key, token, or a
+  digest. Key rotation/revocation is a config update + restart/reload (no runtime revocation).
 - **Export signing:** dedicated Ed25519 key from a mounted secret; ephemeral dev key only under
   local/test profile, else fail-closed. Public key distributed out of band (trust note in ADR 0009).
-- **Prototype boundary:** static API keys, not OAuth2/OIDC + mTLS (documented future work).
+- **Request hardening (ADR 0010):** streaming body-size cap (413), Jackson stream constraints (400),
+  security headers, docs gated by `audit.docs.*`, forwarded headers trusted only under the `proxy`
+  profile.
+- **Prototype boundary:** mTLS and runtime key revocation are not implemented (documented future
+  work).
 
 ## 9. Verification behaviors (violation types)
 

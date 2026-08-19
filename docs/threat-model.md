@@ -36,6 +36,12 @@ API-level attackers.
 | **Endpoint discovery via public API docs** | OpenAPI/Swagger off by default; when on, public only if explicitly configured, else ADMIN-only (`audit.docs.*`) | 401/403 |
 | **Spoofed forwarding headers** (fake client IP/scheme) | `X-Forwarded-*` NOT trusted by default (`forward-headers-strategy: none`); trusted only under the `proxy` profile behind a proxy that overwrites inbound headers | ignored by default |
 | **World-readable signing-key file** | POSIX perm check on the private key: fail-closed outside local/test, warn under local/test; non-POSIX relies on platform ACLs | startup abort (deployed) |
+| **Forged / tampered JWT** (when JWT enabled) | signature verified against issuer JWKS; explicit algorithm allow-list; issuer + audience + exp + nbf validated | 401 |
+| **Client self-assigns a role via token claims** | only trusted `scope`/`scp` scopes map to roles; `roles`/`authorities`/`groups` claims ignored; no default role | 403 |
+| **Ambiguous dual credentials** (Bearer + X-API-Key) | rejected before either mechanism runs | 400 |
+| **Invalid Bearer downgraded to API key** | API-key filter never runs when a Bearer header is present and never overwrites a JWT auth — no fallback | 401 |
+| **Half-configured JWT silently accepting tokens** | enabled-but-incomplete config is a fatal startup error | startup abort |
+| **Log injection via untrusted claim/key text** | all logged auth fields sanitized (control chars incl. CR/LF stripped, length bounded); credentials/tokens/digests never logged | — |
 
 ## Residual risks / assumptions
 
@@ -49,6 +55,11 @@ API-level attackers.
 - **Export completeness:** a signed bundle is not proof that no other matching records exist.
 - **Key management:** file/ephemeral keys are prototype-grade; production needs a KMS/secret manager,
   key rotation, and trusted public-key distribution (a `signingKeyId` is a hint, not trust — ADR 0009).
+- **Authentication:** API keys remain supported; an optional OAuth2/OIDC **JWT resource-server mode**
+  is now available (dual-mode, off by default — ADR 0011). Two honest limitations: (a) **key
+  rotation/revocation for API keys is configuration + restart/reload** — there is no runtime
+  revocation API; (b) when JWT is enabled, the **issuer/JWKS must be reachable** — if it is not,
+  token validation fails closed (401), never open. mTLS is still out of scope.
 - **Transport security:** TLS/mTLS is assumed to be terminated by the deployment environment; not
   configured in the prototype. HSTS is emitted only over HTTPS, so it is inert on plain-HTTP local
   runs and takes effect once TLS is terminated in front of (or at) the service.

@@ -636,6 +636,54 @@ below because they are the clearest evidence of engineer-led, AI-accelerated wor
 
 ---
 
+### AI-020 — Conditional dual-mode JWT authentication + API-key auditability (Commit B)
+
+- **Intent:** add an optional OAuth2/OIDC JWT resource server alongside the existing API keys, plus
+  non-secret key ids and sanitized auth logging. Engineer specified strict dual-mode/no-fallback
+  rules and required tests to use a REAL decoder with locally-signed tokens.
+- **AI produced:** `audit.security.jwt.*` properties (enabled/issuer/jwk-set/audiences/algorithms/
+  scope-roles) bound to a dedicated namespace (NOT Spring's `issuer-uri`, to avoid triggering the
+  auto-configured resource server when disabled); a hardened `NimbusJwtDecoder` (signature +
+  algorithm allow-list + issuer + audience + exp/nbf); a strict scope→role converter (trusted scopes
+  only, client roles claims ignored, no default role); a `DualCredentialGuardFilter` (both-creds →
+  400); an updated `ApiKeyAuthFilter` (never overwrites a JWT auth, no fallback when a Bearer is
+  present); key ids on `ApiKeyProperties` with startup validation (safe chars, ≤64, unique); and a
+  sanitized `AuthEventLogger` (control-char/CRLF stripping, bounded, never logs secrets).
+- **Accepted / Modified / Rejected:**
+  - Initial wiring exposed the decoder as an `Optional<JwtDecoder>` bean; this resolved ambiguously
+    (Spring wrapped the wrong thing) so **valid tokens were rejected 401**. Fixed by injecting
+    `JwtProperties` into `SecurityConfig` and building the decoder inline when complete — caught by
+    the real-decoder integration tests, exactly why they were required.
+  - Confirmed the Boot 4.1 starter rename: used `spring-boot-starter-security-oauth2-resource-server`
+    (the older `-oauth2-resource-server` is deprecated).
+  - Verified the Nimbus/Spring-Security 7.1 API surface (StreamReadConstraints-style builder,
+    `JwtTimestampValidator` covers exp AND nbf, `JwtClaimValidator` for audience) from the actual
+    jars before coding.
+- **Engineer validation:** tests exercise the real Bearer filter + real `NimbusJwtDecoder` with a
+  local RSA JWK set served over an in-test HTTP endpoint (no external IdP). All required cases pass:
+  valid key still works; valid JWT per scope; expired; not-before; malformed; wrong-signature;
+  disallowed-algorithm (HS256); wrong-issuer; wrong-audience; missing/insufficient scope (403);
+  roles-claim-only (403); unknown scopes grant nothing; both-credentials (400); invalid-Bearer no
+  fallback; JWT-disabled + Bearer (401); JWT-disabled + API key works; enabled-but-incomplete fails
+  startup; duplicate/invalid key ids fail startup; and no token/key/digest appears in logs or
+  responses. Full `./mvnw clean verify` green.
+- **Backward compatibility:** additive. API keys and endpoint contracts unchanged; JWT is opt-in. The
+  only new client-visible behavior is the JWT path (when enabled), the both-credentials 400, and the
+  sanitized auth logs / key-id field.
+- **Protocol-check refinements (engineer-directed, before commit):** confirmed and locked with
+  focused tests that invalid/expired/malformed/wrong-signature JWTs return 401 **with
+  `WWW-Authenticate: Bearer`** (resource-server entry point), insufficient-scope stays **403** (no
+  challenge, not downgraded), and API-key/no-credential 401s do **not** advertise Bearer. Changed the
+  both-credentials 400 to serialize a real structured `ApiError` (`application/json`, no credential
+  echoed). Clarified logging: the raw API-key digest is never logged (principal = non-secret key id),
+  and a JWT identity is logged only as a stable **fingerprint** (`jwt:<16 hex>`), never the raw
+  subject — added a `JwtAuthEventLoggingFilter` (success side) and fingerprint unit/integration tests.
+- **Not in this commit (deferred):** observability/Actuator/metrics (Commit C); mTLS and runtime key
+  revocation remain design-only.
+- **Human sign-off:** Reviewed and approved by Raghavendra Begur Rangaramu on 2026-08-19.
+
+---
+
 ## How to read this log going forward
 
 Each future task (implementation, tests, refactors) will get its own `AI-0xx` entry

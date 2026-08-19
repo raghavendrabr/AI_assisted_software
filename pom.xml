@@ -75,10 +75,20 @@
             <artifactId>spring-boot-starter-validation</artifactId>
         </dependency>
 
-        <!-- ===== Security (API-key filter to be added in a later step) ===== -->
+        <!-- ===== Security (API-key filter) ===== -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+
+        <!-- ===== OAuth2 Resource Server (JWT validation; dual-mode alongside API keys) =====
+             Spring Boot 4.1 renamed this starter: the older
+             `spring-boot-starter-oauth2-resource-server` is DEPRECATED in favor of the
+             `security-`-prefixed coordinate below. Version is governed by the Spring Boot BOM
+             (pulls spring-security-oauth2-resource-server / -jose + Nimbus JOSE). See ADR 0011. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security-oauth2-resource-server</artifactId>
         </dependency>
 
         <!-- ===== PostgreSQL driver (version managed by Spring Boot BOM = 42.7.11) ===== -->

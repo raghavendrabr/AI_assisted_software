@@ -106,10 +106,30 @@ docker compose down -v       # also DELETES the local database volume (data is l
   (the `AUDIT_DB_*` entries in `.env.example` show the intended values to keep in sync).
 
 ### Authentication
-All `/api/v1/**` endpoints require an `X-API-Key` header. Keys map to roles **server-side**
-(WRITER / COMPLIANCE_READER / ADMIN) — the client never sends a role. Supply keys via env vars
-(`AUDIT_WRITER_KEY`, `AUDIT_COMPLIANCE_KEY`, `AUDIT_ADMIN_KEY`); unset keys are simply
-inaccessible. Missing/invalid key → 401; wrong role → 403. Example:
+All `/api/v1/**` endpoints require authentication. Two modes are supported and can run together
+(dual-mode); roles are **always resolved server-side** — the client never sends a role.
+
+**API keys (default).** An `X-API-Key` header maps to a role (WRITER / COMPLIANCE_READER / ADMIN).
+Supply keys via env vars (`AUDIT_WRITER_KEY`, `AUDIT_COMPLIANCE_KEY`, `AUDIT_ADMIN_KEY`); unset keys
+are simply inaccessible. Each key may have a stable, non-secret **id** (`audit.security.api-keys[].id`)
+used only in sanitized auth logs. Missing/invalid key → 401; wrong role → 403.
+
+**OAuth2/OIDC JWT (optional, off by default).** Set `audit.security.jwt.enabled=true` with an
+`issuer-uri` (or `jwk-set-uri`) and at least one `audiences` entry. Tokens are validated for
+signature, an algorithm allow-list (`allowed-algorithms`, default RS256/ES256), issuer, audience,
+and exp/nbf. Only trusted scopes map to roles: `audit.write → WRITER`, `audit.read →
+COMPLIANCE_READER`, `audit.admin → ADMIN`. Client `roles`/`authorities` claims are ignored; there is
+no default role. Enabling JWT with incomplete config **fails startup**. Send the token as
+`Authorization: Bearer <token>`.
+
+> **Dual-credential requests are rejected (400).** Supplying both a `Bearer` token and an
+> `X-API-Key` is ambiguous and refused; an invalid Bearer token never falls back to API-key auth.
+
+> **Rotation/revocation** in this prototype is a **configuration update + restart/reload** — there is
+> no runtime revocation API. JWT signing-key rotation is handled by the authorization server; the
+> service picks up new keys from the JWKS.
+
+Example (API key):
 ```
 curl -H "X-API-Key: $AUDIT_WRITER_KEY" -H "Content-Type: application/json" \
      -d '{"eventType":"USER_LOGIN","actorId":"u1","actorType":"USER",
