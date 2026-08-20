@@ -8,6 +8,7 @@ import org.springframework.boot.testcontainers.service.connection.ServiceConnect
 import org.springframework.context.annotation.Bean;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 import org.testcontainers.containers.PostgreSQLContainer;
 
@@ -27,6 +28,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * <p>Requires a running Docker engine (Testcontainers starts a throwaway PostgreSQL 16).
  */
 @SpringBootTest
+@ActiveProfiles("test") // load main application.yml + application-test.yml overrides
 @Transactional // each test runs in a transaction that is rolled back → isolation between tests
 class AuditChainSchemaV1Test {
 

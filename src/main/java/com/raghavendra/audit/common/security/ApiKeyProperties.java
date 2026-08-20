@@ -37,10 +37,16 @@ public class ApiKeyProperties {
         this.apiKeys = apiKeys;
     }
 
-    /** A single key→role mapping. */
+    /** A single key→role mapping, with an optional stable non-secret key id. */
     public static class ApiKeyEntry {
         private String key;
         private ApiRole role;
+        /**
+         * Stable, non-secret identifier for this key, used only in sanitized auth logs (never the
+         * key or its digest). Enables operators to reference a key for rotation/revocation without
+         * exposing it. Optional; when absent a synthetic id is derived from the role.
+         */
+        private String id;
 
         public String getKey() {
             return key;
@@ -56,6 +62,14 @@ public class ApiKeyProperties {
 
         public void setRole(ApiRole role) {
             this.role = role;
+        }
+
+        public String getId() {
+            return id;
+        }
+
+        public void setId(String id) {
+            this.id = id;
         }
     }
 }

@@ -583,6 +583,192 @@ below because they are the clearest evidence of engineer-led, AI-accelerated wor
 
 ---
 
+### AI-019 — Request & security hardening (Commit A of the security/observability pass)
+
+- **Intent:** production-readiness hardening of request handling and HTTP security, scoped to a
+  single focused commit. AI drafted an implementation plan; the engineer reviewed it and returned
+  13 precise corrections before any code was written (recorded below), then approved implementing
+  Commit A only.
+- **AI produced:** a streaming `RequestBodySizeLimitFilter` (413; early Content-Length check +
+  byte-counting `ServletInputStream` wrapper for chunked/unknown-length bodies, never caching the
+  body); Jackson `StreamReadConstraints` (depth 32 / string 64 KiB / number 128) applied via a Boot
+  `JsonFactoryBuilderCustomizer` so the request mapper is hardened without replacing Boot's other
+  Jackson config; bounded `redactableFields` (count/length/syntax); an `audit.docs.*` property that
+  gates springdoc + the security matrix (default off; local public; enabled-private → ADMIN);
+  pinned `server.error.*=never`; `Referrer-Policy` + `Permissions-Policy` headers with HSTS
+  HTTPS-only and no CSP; explicit CORS deny; a `proxy` profile for forwarded-header trust (off by
+  default); and a cross-platform private-key permission check in `Ed25519Signer` (POSIX fail-closed
+  outside local/test, non-POSIX documented ACL reliance).
+- **Accepted / Modified / Rejected (engineer corrections applied before coding):**
+  - Rejected the claim that `server.tomcat.max-http-form-post-size` bounds JSON, and rejected
+    `max-swallow-size` as the primary control → replaced with the raw streaming filter.
+  - Required stream constraints be applied to the ACTUAL request mapper and NOT replace Boot's
+    Jackson config → used `JsonFactoryBuilderCustomizer`.
+  - Reclassified public Swagger from P0 to P1 defense-in-depth; required a simple property toggle
+    (not competing `SecurityFilterChain` beans).
+  - Required forwarded-header trust be profile-gated (not base config) and documented (proxy must
+    overwrite inbound headers; direct access restricted).
+  - Required the security-header delta be precise (record defaults; add only Referrer-Policy +
+    Permissions-Policy; HSTS HTTPS-only; no CSP without live Swagger verification).
+  - Required cross-platform key-permission handling (POSIX fail-closed vs warn by profile;
+    non-POSIX explicit + documented) and that the key is never logged.
+  - Required NO arbitrary Hikari tuning and NO rate-limiting code or disabled placeholder tests in
+    this commit — both honored (rate limiting documented as deferred with rationale only).
+- **Post-review refactor (engineer-directed):** the POSIX permission-evaluation *decision* was
+  extracted into a pure, platform-independent function (`SigningKeyPermissionPolicy.evaluate`) so it
+  is unit-testable on every OS. Added 7 cross-platform unit tests (owner-only → safe; group-read,
+  group-write, other-read, other-write → unsafe; local/test → warn/allow; non-local → fail-closed).
+  The filesystem attribute-view integration test remains conditionally skipped on non-POSIX systems.
+- **Engineer validation:** offline `compile`/`test-compile`, then full `./mvnw clean verify` against
+  real PostgreSQL (Testcontainers): **167 tests, 0 failures, 3 skipped**. The 25 new tests cover
+  413 on declared-length and chunked oversized bodies, at-limit success, depth/string/number → 400,
+  error bodies never echoing the payload, redactable count/path/syntax → 400, security headers
+  present, HSTS absent over HTTP, forwarded headers untrusted by default, Swagger disabled-by-
+  default / public-under-local / ADMIN-only-when-enabled-private, and POSIX key-permission
+  fail-closed vs warn. The 3 skips are the POSIX-only key-permission tests, correctly skipped on the
+  Windows (NTFS) dev filesystem via a JUnit assumption; they execute on POSIX/CI.
+- **Backward compatibility:** additive. API keys, endpoint contracts, and all previously-passing
+  tests are unchanged. The only behavioral changes are that the docs surface is no longer public by
+  default and oversized/pathological request bodies are now rejected (with generous defaults).
+- **Not in this commit (deferred, documented):** OAuth2/OIDC JWT auth, Actuator/metrics/structured
+  logging (later commits), and rate limiting (production requirement, deferred with rationale).
+- **Human sign-off:** Reviewed and approved by Raghavendra Begur Rangaramu on 2026-08-19.
+
+---
+
+### AI-020 — Conditional dual-mode JWT authentication + API-key auditability (Commit B)
+
+- **Intent:** add an optional OAuth2/OIDC JWT resource server alongside the existing API keys, plus
+  non-secret key ids and sanitized auth logging. Engineer specified strict dual-mode/no-fallback
+  rules and required tests to use a REAL decoder with locally-signed tokens.
+- **AI produced:** `audit.security.jwt.*` properties (enabled/issuer/jwk-set/audiences/algorithms/
+  scope-roles) bound to a dedicated namespace (NOT Spring's `issuer-uri`, to avoid triggering the
+  auto-configured resource server when disabled); a hardened `NimbusJwtDecoder` (signature +
+  algorithm allow-list + issuer + audience + exp/nbf); a strict scope→role converter (trusted scopes
+  only, client roles claims ignored, no default role); a `DualCredentialGuardFilter` (both-creds →
+  400); an updated `ApiKeyAuthFilter` (never overwrites a JWT auth, no fallback when a Bearer is
+  present); key ids on `ApiKeyProperties` with startup validation (safe chars, ≤64, unique); and a
+  sanitized `AuthEventLogger` (control-char/CRLF stripping, bounded, never logs secrets).
+- **Accepted / Modified / Rejected:**
+  - Initial wiring exposed the decoder as an `Optional<JwtDecoder>` bean; this resolved ambiguously
+    (Spring wrapped the wrong thing) so **valid tokens were rejected 401**. Fixed by injecting
+    `JwtProperties` into `SecurityConfig` and building the decoder inline when complete — caught by
+    the real-decoder integration tests, exactly why they were required.
+  - Confirmed the Boot 4.1 starter rename: used `spring-boot-starter-security-oauth2-resource-server`
+    (the older `-oauth2-resource-server` is deprecated).
+  - Verified the Nimbus/Spring-Security 7.1 API surface (StreamReadConstraints-style builder,
+    `JwtTimestampValidator` covers exp AND nbf, `JwtClaimValidator` for audience) from the actual
+    jars before coding.
+- **Engineer validation:** tests exercise the real Bearer filter + real `NimbusJwtDecoder` with a
+  local RSA JWK set served over an in-test HTTP endpoint (no external IdP). All required cases pass:
+  valid key still works; valid JWT per scope; expired; not-before; malformed; wrong-signature;
+  disallowed-algorithm (HS256); wrong-issuer; wrong-audience; missing/insufficient scope (403);
+  roles-claim-only (403); unknown scopes grant nothing; both-credentials (400); invalid-Bearer no
+  fallback; JWT-disabled + Bearer (401); JWT-disabled + API key works; enabled-but-incomplete fails
+  startup; duplicate/invalid key ids fail startup; and no token/key/digest appears in logs or
+  responses. Full `./mvnw clean verify` green.
+- **Backward compatibility:** additive. API keys and endpoint contracts unchanged; JWT is opt-in. The
+  only new client-visible behavior is the JWT path (when enabled), the both-credentials 400, and the
+  sanitized auth logs / key-id field.
+- **Protocol-check refinements (engineer-directed, before commit):** confirmed and locked with
+  focused tests that invalid/expired/malformed/wrong-signature JWTs return 401 **with
+  `WWW-Authenticate: Bearer`** (resource-server entry point), insufficient-scope stays **403** (no
+  challenge, not downgraded), and API-key/no-credential 401s do **not** advertise Bearer. Changed the
+  both-credentials 400 to serialize a real structured `ApiError` (`application/json`, no credential
+  echoed). Clarified logging: the raw API-key digest is never logged (principal = non-secret key id),
+  and a JWT identity is logged only as a stable **fingerprint** (`jwt:<16 hex>`), never the raw
+  subject — added a `JwtAuthEventLoggingFilter` (success side) and fingerprint unit/integration tests.
+- **Not in this commit (deferred):** observability/Actuator/metrics (Commit C); mTLS and runtime key
+  revocation remain design-only.
+- **Human sign-off:** Reviewed and approved by Raghavendra Begur Rangaramu on 2026-08-19.
+
+---
+
+### AI-021 — Observability foundation (Commit C)
+
+- **Intent:** add operational observability — Actuator health/probes, Prometheus metrics, Boot-native
+  ECS structured logging, and correlation ids — with strict exposure, bounded metric tags,
+  commit-safe success counters, and no secret leakage. Tracing/alerting are design-only.
+- **AI produced:** actuator config (allow-list health/info/prometheus; liveness/readiness groups;
+  details hidden unless authorized) + security matchers (probes public, rest ADMIN, before
+  `denyAll`); a first-in-chain `CorrelationIdFilter` (bounded `X-Request-Id`, UUID fallback, MDC
+  finally-clear, no async/error re-dispatch); `logging.structured.format.console=ecs` (human-readable
+  under `local`); an `AuditMetrics` abstraction with 7 dotted metric families, enum-bounded tags, and
+  a `TransactionSynchronization afterCommit` helper; instrumentation of append/verify/redact/archive/
+  export/auth at documented single sites; a `JwtFailureMetricsEntryPoint` that counts JWT failures
+  while preserving the RFC 6750 Bearer challenge.
+- **Accepted / Modified / Rejected — issues caught by tests:**
+  - Anchoring the correlation filter to a custom filter class failed at startup ("no registered
+    order"); re-anchored to `UsernamePasswordAuthenticationFilter` (verified real filter order:
+    CorrelationId → BodySize → DualCredential → ApiKey).
+  - `response.reset()` in the 413/400 filters wiped the `X-Request-Id` header; added a
+    `reapplyRequestId` helper so the id survives on those responses.
+  - A **test-resources `application.yml` shadows the main one** on the classpath, so `management.*`
+    was null in tests (prometheus/info 404). Mirrored the actuator config into the test yml; the
+    logging-safety test turns ECS on via a property.
+  - Kept `logstash-logback-encoder`, OpenTelemetry/OTLP, and a custom `logback-spring.xml` OUT
+    (Boot-native ECS suffices). Did NOT assert Flyway metrics (asserted only the runtime-confirmed
+    domain/HTTP/JVM/Hikari series).
+- **Engineer validation:** `./mvnw clean verify` → **263 tests, 0 failures, 3 skipped** (the POSIX-
+  only key-permission tests from Commit A). Tests cover actuator exposure/authorization (incl. ADMIN
+  JWT), correlation on success and 401/403/413 + no cross-thread MDC leak, commit-safe append
+  (success only after commit; rollback → failure), intact/broken verification, redaction/archive/
+  export success/failure, auth counted once per outcome, bounded metric tags, a real Prometheus
+  scrape containing domain+HTTP+JVM+Hikari series, and ECS-JSON logging safety (valid JSON,
+  requestId present, no secrets).
+- **Backward compatibility:** additive; no API/auth contract change. New surface: three actuator
+  endpoints, the `X-Request-Id` header, ECS console logs by default (human-readable under `local`),
+  and domain metrics.
+- **Deferred (design-only):** OpenTelemetry/OTLP tracing and alerting rules — documented, not built.
+- **Post-review test-config correction (engineer-directed):** removed the shadowing
+  `src/test/resources/application.yml` and replaced it with `application-test.yml` containing
+  **overrides only**. The `test` profile is now activated centrally (via `@ActiveProfiles("test")` on
+  the shared `@WithPostgres` meta-annotation, plus the two non-Postgres `@SpringBootTest` classes), so
+  tests load the main `application.yml` first and then apply test overrides. Added
+  `ConfigurationLoadingTest` proving a main-only property stays loaded, a test override wins, and
+  actuator exposure/health come from main. Clarified that dangerous actuator endpoints are simply not
+  web-exposed and currently fail closed at the security boundary (403) with no handler served.
+- **Human sign-off:** Reviewed and approved by Raghavendra Begur Rangaramu on 2026-08-19.
+
+---
+
+### AI-022 — Reviewer-facing documentation, ADR 0013, and stale-doc correction (Commit D)
+
+- **Intent:** produce reviewer-ready documentation for the hardening pass and correct every stale
+  statement in the pre-existing docs — **without** adding runtime functionality, CI, rate limiting,
+  OpenTelemetry, DB roles, or dependency scanning.
+- **AI produced:** `docs/security-auth-observability-improvements.md` (reviewer-facing: per-item
+  identified→previous→improvement→benefit→tests→boundary); `docs/observability.md` (actuator matrix,
+  metric catalog + exact tag vocabulary + instrumentation points, dashboards/alerts marked as
+  recommendations, ECS fields, correlation-ID behavior, sensitive-data rules, OTLP design-only,
+  troubleshooting); **ADR 0013** (DB least-privilege + DB-level immutability — explicitly design-only,
+  documenting why naive REVOKE/GRANT breaks redaction/archival, the two-role model, column-scoped
+  grants + integrity triggers or SECURITY DEFINER procedures, and a migration/testing approach);
+  updates to README, architecture, threat-model, testing-strategy, final-engineering-summary, and
+  demo; a **separate, dated post-review note** in ATTESTATION.md that does not alter the original
+  attestation or dates.
+- **Stale-doc corrections (verified by a tracked-file search):** "135 tests" → **267 (3 skipped on
+  non-POSIX)** everywhere; README banner/stage-table/"planned, not yet present"/"None are implemented
+  yet"/"no functional endpoints" rewritten to reflect the shipped system; `src/test/resources/
+  application.yml` reference → `application-test.yml`; ADR range 0001–0009 → 0001–0013; "static API
+  keys only" limitation superseded with a reference to the dual-mode JWT work (historical ADRs left
+  intact, with superseding references added rather than rewritten).
+- **Honesty preserved:** all known limitations kept explicit — API-key rotation is config+restart;
+  no live IdP bundled; rate limiting deferred to gateway; OTLP/tracing design-only; alerts documented
+  not deployed; DB least-privilege/immutability design-only; KMS/HSM, mTLS, crypto-erasure, Merkle
+  completeness, external notarization deferred; no CI/dependency scanning configured. POSIX
+  key-permission tests are described as running when the suite executes on a POSIX filesystem (CI is
+  a documented future improvement), never as "currently run in CI".
+- **Engineer validation:** `./mvnw clean verify` (documentation and demo-script changes only; no
+  application runtime changes); re-ran the full
+  end-to-end demo and the hardening smoke tests; searched tracked files for TODO/TBD/PENDING/
+  PLACEHOLDER/scaffolding/"135 tests"/"API-key-only"/"public Swagger"/"OAuth2 planned"/"no
+  observability" and reviewed every remaining match as accurate historical context or an intentional
+  example placeholder.
+- **Human sign-off:** Reviewed and approved by Raghavendra Begur Rangaramu on 2026-08-19.
+
+---
+
 ## How to read this log going forward
 
 Each future task (implementation, tests, refactors) will get its own `AI-0xx` entry

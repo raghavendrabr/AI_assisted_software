@@ -1,0 +1,26 @@
+# =============================================================================
+# Profile: proxy  (deployment behind a trusted reverse proxy / load balancer)
+#
+# Activate this profile ONLY when the application runs behind a reverse proxy or load balancer
+# that terminates TLS and sets the standard forwarding headers (X-Forwarded-For / -Proto / -Host).
+# With this profile active, the application trusts those headers so that request.getScheme(),
+# getRemoteAddr(), and generated absolute URLs reflect the ORIGINAL client request rather than the
+# hop from the proxy.
+#
+# SECURITY PRECONDITIONS (must all hold before enabling this profile):
+#   1. The trusted proxy MUST OVERWRITE any inbound X-Forwarded-* headers from the client, so a
+#      client cannot spoof its address or scheme. If the proxy merely appends, spoofing is
+#      possible — do not enable this profile in that case.
+#   2. DIRECT access to the application port MUST BE RESTRICTED (network policy / firewall /
+#      security group) so requests can reach it ONLY through the trusted proxy. Otherwise a client
+#      can bypass the proxy and send forged forwarding headers straight to the app.
+#
+# The default (no 'proxy' profile) is fail-safe: server.forward-headers-strategy=none, i.e.
+# forwarding headers are ignored entirely.
+#
+# Note: TLS itself is assumed to be terminated at the proxy (see docs/threat-model.md); this
+# profile only governs whether the app trusts the proxy's forwarding headers.
+# =============================================================================
+server:
+  # 'framework' uses Spring's ForwardedHeaderFilter to honor X-Forwarded-* from the trusted proxy.
+  forward-headers-strategy: framework

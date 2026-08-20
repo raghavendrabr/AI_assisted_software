@@ -1,6 +1,7 @@
 package com.raghavendra.audit.event.api;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import tools.jackson.databind.JsonNode;
 
@@ -31,6 +32,12 @@ import java.util.List;
  * @param payload          structured, event-specific detail (JSON object); optional
  * @param redactableFields top-level payload field names to store as redactable envelopes
  *                         (salt + commitment); optional. Only these fields can later be redacted.
+ *                         Bounded in count and per-element length/syntax so a request cannot
+ *                         declare an unbounded or malformed set of redactable paths. The bounds
+ *                         mirror the {@code audit.limits.max-redactable-fields} /
+ *                         {@code max-redactable-field-path-length} defaults (64 / 128); the syntax
+ *                         restricts each entry to a single top-level identifier
+ *                         ({@code [A-Za-z0-9_.-]}), which is all the redaction model supports.
  * @param eventTimestamp   optional caller-supplied business time; defaults to ingestion time
  */
 public record AppendEventRequest(
@@ -42,7 +49,13 @@ public record AppendEventRequest(
         @NotBlank @Size(max = 64) String outcome,
         @Size(max = 1024) String businessReason,
         JsonNode payload,
-        List<String> redactableFields,
+        @Size(max = 64, message = "must not contain more than 64 entries")
+        List<
+                @NotBlank
+                @Size(max = 128, message = "field path must not exceed 128 characters")
+                @Pattern(regexp = "[A-Za-z0-9_.\\-]+",
+                        message = "field path may contain only letters, digits, '_', '.' or '-'")
+                String> redactableFields,
         OffsetDateTime eventTimestamp
 ) {
 }

@@ -3,6 +3,7 @@ package com.raghavendra.audit.event.application;
 import com.raghavendra.audit.common.hash.CanonicalJsonSerializer;
 import com.raghavendra.audit.common.hash.ProtectedEventProjection;
 import com.raghavendra.audit.common.hash.Sha256Hasher;
+import com.raghavendra.audit.common.observability.AuditMetrics;
 import com.raghavendra.audit.redaction.RedactablePayloadProcessor;
 import com.raghavendra.audit.event.api.AppendEventRequest;
 import com.raghavendra.audit.event.domain.AuditChainHeadEntity;
@@ -45,6 +46,7 @@ public class AuditEventAppendService {
     private final Sha256Hasher hasher;
     private final RedactablePayloadProcessor payloadProcessor;
     private final Clock clock;
+    private final AuditMetrics metrics;
 
     public AuditEventAppendService(
             AuditEventRepository eventRepository,
@@ -52,13 +54,15 @@ public class AuditEventAppendService {
             CanonicalJsonSerializer serializer,
             Sha256Hasher hasher,
             RedactablePayloadProcessor payloadProcessor,
-            Clock clock) {
+            Clock clock,
+            AuditMetrics metrics) {
         this.eventRepository = eventRepository;
         this.chainHeadRepository = chainHeadRepository;
         this.serializer = serializer;
         this.hasher = hasher;
         this.payloadProcessor = payloadProcessor;
         this.clock = clock;
+        this.metrics = metrics;
     }
 
     /**
@@ -69,6 +73,19 @@ public class AuditEventAppendService {
      */
     @Transactional
     public AuditEventEntity append(AppendEventRequest request, UUID eventId) {
+        try {
+            AuditEventEntity saved = doAppend(request, eventId);
+            // Success is counted ONLY after the transaction commits (never on rollback).
+            metrics.incrementAfterCommit(metrics::appendedSuccess);
+            return saved;
+        } catch (RuntimeException e) {
+            // A failed/rolled-back append: count failure, not success.
+            metrics.appendFailure();
+            throw e;
+        }
+    }
+
+    private AuditEventEntity doAppend(AppendEventRequest request, UUID eventId) {
         // EARLY DEFENSIVE pre-check only. The authoritative guarantee is the UNIQUE constraint
         // on event_id in the database; this pre-check just turns the common case into a clean
         // 409 without a DB round-trip failure. It does NOT close the race between check and

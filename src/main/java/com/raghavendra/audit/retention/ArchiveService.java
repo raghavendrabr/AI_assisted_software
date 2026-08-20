@@ -57,6 +57,7 @@ public class ArchiveService {
     private final ArchiveManifestHasher manifestHasher;
     private final Sha256Hasher hasher;
     private final Clock clock;
+    private final com.raghavendra.audit.common.observability.AuditMetrics metrics;
     private final ObjectMapper mapper = new ObjectMapper();
 
     public ArchiveService(AuditEventRepository eventRepository,
@@ -66,7 +67,8 @@ public class ArchiveService {
                           AuditChainHeadRepository chainHeadRepository,
                           ArchiveManifestHasher manifestHasher,
                           Sha256Hasher hasher,
-                          Clock clock) {
+                          Clock clock,
+                          com.raghavendra.audit.common.observability.AuditMetrics metrics) {
         this.eventRepository = eventRepository;
         this.archiveRepository = archiveRepository;
         this.manifestRepository = manifestRepository;
@@ -75,6 +77,7 @@ public class ArchiveService {
         this.manifestHasher = manifestHasher;
         this.hasher = hasher;
         this.clock = clock;
+        this.metrics = metrics;
     }
 
     /**
@@ -85,6 +88,17 @@ public class ArchiveService {
      */
     @Transactional
     public ArchiveManifestEntity archiveOlderThan(OffsetDateTime olderThan, String authorizedBy) {
+        try {
+            ArchiveManifestEntity manifest = doArchiveOlderThan(olderThan, authorizedBy);
+            metrics.incrementAfterCommit(metrics::archiveSuccess); // only after commit
+            return manifest;
+        } catch (RuntimeException e) {
+            metrics.archiveFailure();
+            throw e;
+        }
+    }
+
+    private ArchiveManifestEntity doArchiveOlderThan(OffsetDateTime olderThan, String authorizedBy) {
         // Lock the head first — serializes archival with redaction and other amendment appends.
         AuditChainHeadEntity head = chainHeadRepository.findAndLockSingleton()
                 .orElseThrow(() -> new IllegalStateException("chain head row missing"));

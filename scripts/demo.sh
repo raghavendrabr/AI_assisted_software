@@ -65,4 +65,46 @@ echo "tampered sequence 1 (actor_id -> attacker)"
 curl -s -H "X-API-Key: $COMP_KEY" "$BASE/audit/verify"
 echo
 
-say "Demo complete. Expect step 6 to report intact:false with a CONTENT_HASH_MISMATCH."
+# ---------------------------------------------------------------------------------------------
+# Security & observability hardening checks (ADRs 0010-0012). These require NO private keys,
+# tokens, or live identity provider. HOST is the base host, derived from BASE (= HOST + /api/v1).
+# ---------------------------------------------------------------------------------------------
+HOST="${HOST:-${BASE%/api/v1}}"
+code() { curl -s -o /dev/null -w "%{http_code}" "$@"; }
+
+say "7. Request hardening: oversized body -> 413"
+# Build a >64 KiB body in a temp file (never printed) so the OS arg limit is not hit.
+BIG_FILE="$(mktemp)"
+{ printf '{"eventType":"X","actorId":"a","actorType":"U","resourceType":"CLIENT_ACCOUNT","resourceId":"r","outcome":"SUCCESS","payload":{"note":"';
+  head -c 200000 < /dev/zero | tr '\0' 'x';
+  printf '"}}'; } > "$BIG_FILE"
+printf 'oversized POST -> %s (expect 413)\n' \
+  "$(code -X POST "$BASE/audit/events" -H "X-API-Key: $WRITER_KEY" -H 'Content-Type: application/json' --data-binary @"$BIG_FILE")"
+rm -f "$BIG_FILE"
+
+say "8. Auth matrix (API key): 401 / 403 / 200"
+printf 'no key      -> %s (expect 401)\n' "$(code "$BASE/audit/verify")"
+printf 'writer(role)-> %s (expect 403)\n' "$(code "$BASE/audit/verify" -H "X-API-Key: $WRITER_KEY")"
+printf 'compliance  -> %s (expect 200)\n' "$(code "$BASE/audit/verify" -H "X-API-Key: $COMP_KEY")"
+
+say "9. Dual-mode: JWT disabled -> Bearer 401; both credentials -> 400"
+printf 'bearer (JWT off) -> %s (expect 401)\n' "$(code "$BASE/audit/verify" -H 'Authorization: Bearer any.token.value')"
+printf 'both credentials -> %s (expect 400)\n' "$(code "$BASE/audit/verify" -H 'Authorization: Bearer a.b.c' -H "X-API-Key: $COMP_KEY")"
+# NOTE: enabling JWT requires YOUR own OAuth2/OIDC provider + a token you mint. No IdP, key, or
+# token is committed here. See docs/demo.md for the exact config keys.
+
+say "10. Observability: probes public; Prometheus ADMIN-only; dangerous endpoints not served"
+printf 'liveness            -> %s (expect 200, public)\n' "$(code "$HOST/actuator/health/liveness")"
+printf 'readiness           -> %s (expect 200, public)\n' "$(code "$HOST/actuator/health/readiness")"
+printf 'prometheus (no key) -> %s (expect 401)\n'          "$(code "$HOST/actuator/prometheus")"
+printf 'prometheus (admin)  -> %s (expect 200)\n'          "$(code "$HOST/actuator/prometheus" -H "X-API-Key: $ADMIN_KEY")"
+printf 'actuator/env (admin)-> %s (expect 403, never a sensitive body)\n' "$(code "$HOST/actuator/env" -H "X-API-Key: $ADMIN_KEY")"
+
+say "11. Correlation ID: inbound X-Request-Id is echoed on the response"
+RID_ECHO="$(curl -s -D - -o /dev/null "$BASE/audit/verify" -H "X-API-Key: $COMP_KEY" -H 'X-Request-Id: demo-req-001' | grep -i '^x-request-id:' | tr -d '\r')"
+echo "response header: ${RID_ECHO:-<none>}  (expect demo-req-001)"
+
+say "12. Domain metrics present in the Prometheus scrape (dotted names -> _total)"
+curl -s "$HOST/actuator/prometheus" -H "X-API-Key: $ADMIN_KEY" | grep '^audit_' | head -8
+
+say "Demo complete. Step 6 reports intact:false (CONTENT_HASH_MISMATCH); steps 7-12 show the security & observability hardening."

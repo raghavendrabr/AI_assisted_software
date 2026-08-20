@@ -19,9 +19,19 @@ integrity protection. Full architecture: `docs/architecture.md`. Decisions: `doc
 - **APIs:** append, filtered/paginated query, verify, redact, archive, signed export, compliance report.
 - **Schema:** Flyway V1 (event chain), V2 (amendment chain), V3 (archive + manifest).
 - **Hashing library:** canonical serializer + SHA-256 + Ed25519 signer + standalone bundle verifier.
-- **Docs:** architecture, 9 ADRs, per-scenario requirements, testing strategy, threat model, AI usage log.
-- **Tests:** 135 (unit + Testcontainers integration).
-- **Demo:** `docs/demo.md` walkthrough + `scripts/demo.sh` end-to-end script.
+- **Docs:** architecture, ADRs (0001–0013), per-scenario requirements, testing strategy, threat
+  model, observability guide, reviewer-facing hardening summary, AI usage log.
+- **Tests:** originally 135; **267 after the post-review hardening pass** (unit + Testcontainers
+  integration; 3 POSIX-only signing-key-permission tests skipped on non-POSIX).
+- **Demo:** `docs/demo.md` walkthrough + `scripts/demo.sh` end-to-end script (core chain + security
+  hardening checks).
+
+> **Post-review hardening (2026-08-19, branch `feature/security-observability-hardening`).** After
+> submission, a security/auth/observability pass was added (ADRs 0010–0013): request/HTTP hardening;
+> conditional dual-mode OAuth2/OIDC JWT alongside API keys; Actuator health probes + Prometheus
+> domain metrics; ECS structured logging + correlation IDs. See
+> `docs/security-auth-observability-improvements.md`. These were added **after** the original
+> submission and are not part of the originally submitted version (see `ATTESTATION.md`).
 
 ## 3. Scenario outcomes
 
@@ -60,8 +70,11 @@ integrity protection. Full architecture: `docs/architecture.md`. Decisions: `doc
   brute-forceable); true erasure/crypto-erasure is future work.
 - **Export** proves the bundle is unchanged, not global query completeness.
 - **Retention** moves records (never destroys); hard deletion/legal erasure is out of scope.
-- **Security** is prototype-grade (static API keys); production needs OAuth2/OIDC + mTLS + a secret
-  manager/KMS.
+- **Security** — the original submission used static API keys only. The **post-review pass** added a
+  conditional dual-mode OAuth2/OIDC JWT resource server alongside API keys (off by default), request/
+  HTTP hardening, and Actuator/metrics/structured logging (ADRs 0010–0013). **Still deferred:** mTLS,
+  KMS/HSM signing, runtime API-key revocation (rotation is config + restart/reload), and gateway-tier
+  rate limiting. See `docs/security-auth-observability-improvements.md` for the full boundary list.
 - **Scale:** the single-chain head lock caps write throughput by design.
 
 ## 7. AI usage
@@ -79,7 +92,7 @@ See `README.md` (Getting started) and `docs/demo.md`. In short:
 ```
 docker compose up -d                 # PostgreSQL 16
 ./mvnw spring-boot:run               # the service (Flyway applies V1–V3)
-./mvnw test                          # 135 tests (Testcontainers; needs Docker)
+./mvnw test                          # 267 tests (Testcontainers; needs Docker; 3 skipped on non-POSIX)
 scripts/demo.sh                      # end-to-end: append, query, verify, redact, archive, export
 ```
 Core proof: append events, `GET /audit/verify` → intact; modify a row directly in PostgreSQL;
