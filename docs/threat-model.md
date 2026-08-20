@@ -78,3 +78,15 @@ API-level attackers.
   tier (or a shared store for multi-instance correctness), not in the single-instance prototype.
   Constant-time API-key comparison already removes a timing side-channel, but request-rate abuse is
   unmitigated in-process. Tracked as future work.
+- **Database-privilege blast radius:** the application connects as the schema **owner**, so a
+  compromised app credential could `UPDATE`/`DELETE` integrity columns directly (detectable only by
+  later chain re-verification). No DB-level immutability (triggers/REVOKE) is enforced. A
+  **least-privilege runtime role + DB-level immutability** model is designed in **ADR 0013** but is
+  **design-only / not implemented** — the tamper-evidence guarantee still holds via the hash chain;
+  this would add defense-in-depth. (An attacker with the `audit_owner`/DB-superuser credential and
+  the ability to rewrite the entire chain remains covered only by external notarization, above.)
+- **Observability endpoints:** metrics/health are ADMIN-gated except the status-only liveness/
+  readiness probes; no sensitive data is exposed in metrics, logs, or health details.
+- **Alerting & CI:** recommended alert rules (chain-verify failure, auth-failure spikes, archive/
+  signing failure, DB pool exhaustion) are documented in `docs/observability.md` but **not deployed**;
+  no automated CI/dependency-scanning pipeline is configured yet. Both are future work.

@@ -732,6 +732,43 @@ below because they are the clearest evidence of engineer-led, AI-accelerated wor
 
 ---
 
+### AI-022 — Reviewer-facing documentation, ADR 0013, and stale-doc correction (Commit D)
+
+- **Intent:** produce reviewer-ready documentation for the hardening pass and correct every stale
+  statement in the pre-existing docs — **without** adding runtime functionality, CI, rate limiting,
+  OpenTelemetry, DB roles, or dependency scanning.
+- **AI produced:** `docs/security-auth-observability-improvements.md` (reviewer-facing: per-item
+  identified→previous→improvement→benefit→tests→boundary); `docs/observability.md` (actuator matrix,
+  metric catalog + exact tag vocabulary + instrumentation points, dashboards/alerts marked as
+  recommendations, ECS fields, correlation-ID behavior, sensitive-data rules, OTLP design-only,
+  troubleshooting); **ADR 0013** (DB least-privilege + DB-level immutability — explicitly design-only,
+  documenting why naive REVOKE/GRANT breaks redaction/archival, the two-role model, column-scoped
+  grants + integrity triggers or SECURITY DEFINER procedures, and a migration/testing approach);
+  updates to README, architecture, threat-model, testing-strategy, final-engineering-summary, and
+  demo; a **separate, dated post-review note** in ATTESTATION.md that does not alter the original
+  attestation or dates.
+- **Stale-doc corrections (verified by a tracked-file search):** "135 tests" → **267 (3 skipped on
+  non-POSIX)** everywhere; README banner/stage-table/"planned, not yet present"/"None are implemented
+  yet"/"no functional endpoints" rewritten to reflect the shipped system; `src/test/resources/
+  application.yml` reference → `application-test.yml`; ADR range 0001–0009 → 0001–0013; "static API
+  keys only" limitation superseded with a reference to the dual-mode JWT work (historical ADRs left
+  intact, with superseding references added rather than rewritten).
+- **Honesty preserved:** all known limitations kept explicit — API-key rotation is config+restart;
+  no live IdP bundled; rate limiting deferred to gateway; OTLP/tracing design-only; alerts documented
+  not deployed; DB least-privilege/immutability design-only; KMS/HSM, mTLS, crypto-erasure, Merkle
+  completeness, external notarization deferred; no CI/dependency scanning configured. POSIX
+  key-permission tests are described as running when the suite executes on a POSIX filesystem (CI is
+  a documented future improvement), never as "currently run in CI".
+- **Engineer validation:** `./mvnw clean verify` (documentation and demo-script changes only; no
+  application runtime changes); re-ran the full
+  end-to-end demo and the hardening smoke tests; searched tracked files for TODO/TBD/PENDING/
+  PLACEHOLDER/scaffolding/"135 tests"/"API-key-only"/"public Swagger"/"OAuth2 planned"/"no
+  observability" and reviewed every remaining match as accurate historical context or an intentional
+  example placeholder.
+- **Human sign-off:** Reviewed and approved by Raghavendra Begur Rangaramu on 2026-08-19.
+
+---
+
 ## How to read this log going forward
 
 Each future task (implementation, tests, refactors) will get its own `AI-0xx` entry

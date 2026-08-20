@@ -1,9 +1,15 @@
 # Tamper-Evident Audit Log Service
 
-> **Project status: COMPLETE (Scenarios A, B, C).**
-> Runnable end-to-end on Java 21 / Spring Boot 4.1 / PostgreSQL 16 with 135 passing tests
-> (unit + Testcontainers integration). See [docs/architecture.md](docs/architecture.md) and
-> [docs/final-engineering-summary.md](docs/final-engineering-summary.md).
+> **Project status: COMPLETE (Scenarios A, B, C) + post-review hardening.**
+> Runnable end-to-end on Java 21 / Spring Boot 4.1 / PostgreSQL 16 with **267 passing tests**
+> (unit + Testcontainers integration; 3 POSIX-only signing-key-permission tests are skipped on
+> non-POSIX filesystems). See [docs/architecture.md](docs/architecture.md),
+> [docs/final-engineering-summary.md](docs/final-engineering-summary.md), and the reviewer-facing
+> [docs/security-auth-observability-improvements.md](docs/security-auth-observability-improvements.md).
+>
+> A **post-review security/auth/observability hardening pass** (branch
+> `feature/security-observability-hardening`, ADRs 0010–0013) was added **after** the original
+> submission — see [ATTESTATION.md](ATTESTATION.md).
 
 A service that records an **append-only** history of events and makes any modification
 or deletion of past records **detectable** via a cryptographic hash chain. Built as an
@@ -17,24 +23,21 @@ correctness, design, and authorship.
 | Stage | State |
 |---|---|
 | Requirement analysis & assumptions | Done (docs) |
-| Design & decision records | In progress (`docs/decisions/` — ADR 0001 versions, ADR 0002 schema) |
-| Build + local runtime scaffolding | Done (`pom.xml`, entry point, config, Compose, Maven Wrapper) |
-| Database schema / Flyway migrations | **V1** — `audit_event` + `audit_chain_head` tables + seed row |
+| Design & decision records | Done (`docs/decisions/` — ADRs 0001–0013) |
+| Build + local runtime | Done (`pom.xml`, entry point, config, Compose, Maven Wrapper) |
+| Database schema / Flyway migrations | **V1–V3** — event chain, amendment chain, archive + manifest |
 | Hashing | Canonical serialization + SHA-256 content hash (ADR 0003) |
 | Write API | `POST /api/v1/audit/events` — transactional append, `SELECT ... FOR UPDATE` chain lock (ADR 0004) |
 | Read API | `GET /api/v1/audit/events` — filtered, cursor-paginated, bounded search (ADR 0005) |
-| Verify API | `GET /api/v1/audit/verify` — full chain walk, 6 violation types (ADR 0005) |
-| Security | **API-key auth** (`X-API-Key`) → server-side roles WRITER / COMPLIANCE_READER / ADMIN, per-endpoint authorization (ADR 0006) |
+| Verify API | `GET /api/v1/audit/verify` — full chain walk, 10 violation types (ADR 0005) |
+| Security | **Dual-mode auth** — `X-API-Key` (server-side roles) + optional OAuth2/OIDC JWT (off by default); fail-closed `denyAll()`; request/HTTP hardening (ADRs 0006, 0010, 0011) |
+| Observability | Actuator health probes + Prometheus domain metrics + ECS structured logging + correlation IDs (ADR 0012) |
 | Compliance (Scenario C slice) | `GET /api/v1/compliance/access-report` — client-account access (success + denied), actor/account/outcome/time filters |
 | Redaction (Scenario B) | `POST /api/v1/audit/events/{seq}/redact` (ADMIN) — salted-commitment redaction + amendment chain; chain stays intact (ADR 0007) |
 | Retention/archival (Scenario B) | `POST /api/v1/audit/retention/archive` (ADMIN) — move oldest prefix to archive + manifest + ARCHIVE amendment; verify reads active+archive as one chain (ADR 0008) |
 | Verifiable export (Scenario B) | `GET /api/v1/audit/export?resourceId=\|actorId=` — Ed25519-signed bundle + standalone `ExportVerifyMain` verifier (ADR 0009) |
-| Tests | 135 total — hashing (28), V1 schema (11), append (12), search (8), verify (10), redaction (19), retention (19), export (16), security (19), compliance (5), handler (2), context (1) |
-| Runnable end-to-end | **Scenarios A + B + compliance** — append, query, verify, tamper-detect, redact, archive, signed export (verifies offline), compliance report |
-
-API examples and test-status badges will be added **only once the corresponding code
-exists**. They are intentionally omitted now to avoid implying functionality that has
-not been built.
+| Tests | **267 total** (3 POSIX-only skipped on non-POSIX) — core Scenario A/B/C coverage plus request-hardening, dual-mode JWT, and observability suites (see [docs/testing-strategy.md](docs/testing-strategy.md)) |
+| Runnable end-to-end | **Scenarios A + B + compliance + hardening** — append, query, verify, tamper-detect, redact, archive, signed export (verifies offline), compliance report, health probes, Prometheus scrape |
 
 ---
 
@@ -74,7 +77,13 @@ docker compose ps            # wait until 'audit-postgres' is healthy
 mvnw.cmd spring-boot:run
 ```
 The app boots against the Compose PostgreSQL using the defaults in
-`src/main/resources/application.yml`. It currently exposes no functional audit endpoints.
+`src/main/resources/application.yml` and serves the full API (append, query, verify, redact, archive,
+signed export, compliance report) plus the observability endpoints (health probes, Prometheus). For a
+guided walkthrough incl. the security-hardening checks, see [docs/demo.md](docs/demo.md).
+
+> **Note:** outside the `local`/`test` profiles the service **fails closed at startup** if no Ed25519
+> export signing key is configured (ADR 0009). Run with `--spring.boot.run.profiles=local` (or
+> `-Dspring-boot.run.profiles=local`) locally to use the ephemeral dev signing key.
 
 ### 3. Stop PostgreSQL
 ```
@@ -140,37 +149,38 @@ curl -H "X-API-Key: $AUDIT_WRITER_KEY" -H "Content-Type: application/json" \
 ### Notes
 - Secrets are never committed. `application.yml`, `.env.example`, and
   `application-local.yml.example` contain only **local-only** placeholder values.
-  Test-only API keys live in `src/test/resources/application.yml` and are clearly non-production.
+  Test-only API keys live in `src/test/resources/application-test.yml` (overrides only; the suite
+  loads the main `application.yml` first, then applies these under the `test` profile) and are
+  clearly non-production.
   `application-local.yml` is strictly for a developer's **local** machine (git-ignored).
 - **Non-local environments do not use `application-local.yml` or committed defaults.**
   Real credentials there are supplied via **protected environment injection or a secret
   manager** (e.g. Docker/K8s secrets, Vault, a cloud secret manager) — never checked into
   the repository.
 - Decisions and how versions/schema were verified are recorded under
-  [docs/decisions/](docs/decisions/) (ADR 0001 — versions; ADR 0002 — audit-chain schema).
+  [docs/decisions/](docs/decisions/) (ADRs 0001–0013).
 
 ---
 
-## Intended stack (planned, not yet present)
+## Stack
 
 - **Language / runtime:** Java 21
-- **Framework:** Spring Boot 4.1.x (current stable GA line; see `docs/assumptions.md` for the version rationale)
-- **Build:** Maven
-- **Persistence:** PostgreSQL 16 + Spring Data JPA, schema managed by Flyway migrations
-- **API docs:** springdoc-openapi 3.1.x (the springdoc line that supports Spring Boot 4.x)
-- **Hashing:** SHA-256 over a canonical serialization of event fields
-- **Export signing:** Ed25519 (dedicated signing key, separate from API auth)
-- **Testing:** JUnit 5, Mockito, Testcontainers (real PostgreSQL)
-- **Local orchestration:** Docker Compose (planned)
-
-> Exact dependency versions will be pinned in `pom.xml` when the project is scaffolded,
-> and the choices recorded in an Architecture Decision Record.
+- **Framework:** Spring Boot 4.1.0 (BOM-governed dependencies; see `docs/decisions/0001-*`)
+- **Build:** Maven (Maven Wrapper pinned to 3.9.9)
+- **Persistence:** PostgreSQL 16 + Spring Data JPA, schema managed by Flyway (V1–V3)
+- **API docs:** springdoc-openapi 3.1.0 (Boot 4.x line), gated by `audit.docs.*`
+- **AuthN/Z:** `X-API-Key` server-side roles + optional OAuth2/OIDC JWT resource server (off by
+  default); Spring Security fail-closed `denyAll()`
+- **Hashing:** SHA-256 over a canonical serialization; Ed25519 signed export (dedicated key)
+- **Observability:** Spring Boot Actuator + Micrometer/Prometheus + native ECS structured logging
+- **Testing:** JUnit 5, Testcontainers (real PostgreSQL 16), Nimbus JOSE for local JWT test keys
+- **Local orchestration:** Docker Compose (PostgreSQL)
 
 ---
 
-## Planned capabilities
+## Implemented capabilities
 
-These map to the three assignment scenarios. **None are implemented yet.**
+All three assignment scenarios are implemented, plus a post-review hardening pass.
 
 ### Scenario A — Core audit log service
 - Write API to append event records (`eventType`, `actorId`, `resourceType`, `resourceId`, `payload`, `timestamp`). Append-only: no update or delete API.
@@ -201,25 +211,25 @@ These map to the three assignment scenarios. **None are implemented yet.**
 ├── .env.example                  <- local-only env placeholders for Compose (copy to .env)
 ├── .gitignore
 ├── src/
-│   └── main/
-│       ├── java/com/raghavendra/audit/
-│       │   └── AuditLogServiceApplication.java   <- minimal Spring Boot entry point
-│       └── resources/
-│           ├── application.yml                    <- base config (env-var placeholders, no secrets)
-│           ├── application-local.yml.example      <- example local override (copy to application-local.yml)
-│           └── db/migration/
-│               └── V1__create_audit_chain_foundation.sql  <- audit_event + audit_chain_head + seed
+│   ├── main/
+│   │   ├── java/com/raghavendra/audit/     <- event, amendment, redaction, retention, verify,
+│   │   │                                      export, compliance, and common/{hash,security,
+│   │   │                                      security/jwt,web,observability,config} packages
+│   │   └── resources/
+│   │       ├── application.yml              <- base config (env placeholders; actuator; ECS logging)
+│   │       ├── application-local.yml.example
+│   │       ├── application-proxy.yml        <- proxy profile: forwarded-header trust
+│   │       └── db/migration/                <- Flyway V1 (event chain), V2 (amendments), V3 (archive)
+│   └── test/
+│       ├── java/com/raghavendra/audit/...   <- unit + Testcontainers integration tests
+│       └── resources/application-test.yml   <- test overrides only (loaded on top of main)
+├── scripts/                                 <- demo.sh, generate-export-keypair.sh
 └── docs/
-    ├── decisions/
-    │   ├── 0001-technology-versions.md  <- ADR: verified dependency versions & sources
-    │   └── 0002-audit-chain-schema.md   <- ADR: audit-chain schema & constraints (V1)
-    ├── requirements/
-    │   ├── scenario-a.md          <- assignment requirements vs. our assumptions (A)
-    │   ├── scenario-b.md          <- assignment requirements vs. our assumptions (B)
-    │   └── scenario-c.md          <- ambiguous requirement clarification (C)
-    ├── assumptions.md             <- cross-cutting assumptions & open questions
-    ├── ai-usage-log.md            <- honest record of AI use in planning/design
-    └── final-engineering-summary.md  <- outline, to be filled in as work proceeds
+    ├── decisions/                           <- ADRs 0001–0013
+    ├── requirements/                        <- scenario-a/b/c requirement analyses
+    ├── architecture.md, threat-model.md, testing-strategy.md, observability.md,
+    ├── security-auth-observability-improvements.md, scenario-c-design.md, demo.md,
+    ├── assumptions.md, final-engineering-summary.md, ai-usage-log.md
 ```
 
 ### Key documents
@@ -229,7 +239,9 @@ These map to the three assignment scenarios. **None are implemented yet.**
 - [docs/threat-model.md](docs/threat-model.md) — adversaries, mitigations, residual risks.
 - [docs/scenario-c-design.md](docs/scenario-c-design.md) — compliance-reporting clarification + design.
 - [docs/demo.md](docs/demo.md) — end-to-end walkthrough; [scripts/demo.sh](scripts/demo.sh) runs it.
-- [docs/decisions/](docs/decisions/) — ADRs 0001–0009; [docs/ai-usage-log.md](docs/ai-usage-log.md) — AI traceability.
+- [docs/security-auth-observability-improvements.md](docs/security-auth-observability-improvements.md) — reviewer-facing post-review hardening summary.
+- [docs/observability.md](docs/observability.md) — actuator/metrics/logging/correlation-ID operational guide.
+- [docs/decisions/](docs/decisions/) — ADRs 0001–0013; [docs/ai-usage-log.md](docs/ai-usage-log.md) — AI traceability.
 
 ---
 
