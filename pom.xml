@@ -69,6 +69,20 @@
             <artifactId>spring-boot-starter-data-jpa</artifactId>
         </dependency>
 
+        <!-- ===== Observability: Actuator + Prometheus metrics (Commit C) =====
+             Health probes, info, and a Prometheus scrape endpoint. Versions are governed by the
+             Spring Boot 4.1 BOM (micrometer-registry-prometheus = 1.17.0). Structured logging uses
+             Boot-native ECS (logging.structured.format.console=ecs) — NO logstash-logback-encoder
+             and NO OpenTelemetry/OTLP dependencies are added. See ADR 0012. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
+        </dependency>
+
         <!-- ===== Request validation (Bean Validation) ===== -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

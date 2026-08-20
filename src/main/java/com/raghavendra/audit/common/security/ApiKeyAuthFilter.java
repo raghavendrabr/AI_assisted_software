@@ -42,10 +42,13 @@ public class ApiKeyAuthFilter extends OncePerRequestFilter {
 
     private final ApiKeyService apiKeyService;
     private final AuthEventLogger authLog;
+    private final com.raghavendra.audit.common.observability.AuditMetrics metrics;
 
-    public ApiKeyAuthFilter(ApiKeyService apiKeyService, AuthEventLogger authLog) {
+    public ApiKeyAuthFilter(ApiKeyService apiKeyService, AuthEventLogger authLog,
+                            com.raghavendra.audit.common.observability.AuditMetrics metrics) {
         this.apiKeyService = apiKeyService;
         this.authLog = authLog;
+        this.metrics = metrics;
     }
 
     @Override
@@ -78,13 +81,22 @@ public class ApiKeyAuthFilter extends OncePerRequestFilter {
             var auth = new UsernamePasswordAuthenticationToken(
                     "api-key:" + rk.role().name(), null, authorities);
             SecurityContextHolder.getContext().setAuthentication(auth);
-            // Sanitized success log: method + non-secret key id, never the key.
+            // Sanitized success log + metric (single site for API-key success).
             authLog.log(AuthEventLogger.Method.API_KEY, AuthEventLogger.Result.SUCCESS,
                     "valid-key", rk.keyId());
+            metrics.authentication(
+                    com.raghavendra.audit.common.observability.AuditMetrics.Result.SUCCESS,
+                    com.raghavendra.audit.common.observability.AuditMetrics.Method.API_KEY,
+                    com.raghavendra.audit.common.observability.AuditMetrics.AuthReason.VALID_KEY);
         } else if (presentedKey != null && !presentedKey.isBlank()) {
-            // A key was presented but did not resolve. Log the failure without the key.
+            // A key was presented but did not resolve. Log the failure without the key (single site
+            // for API-key failure).
             authLog.log(AuthEventLogger.Method.API_KEY, AuthEventLogger.Result.FAILURE,
                     "unknown-key", null);
+            metrics.authentication(
+                    com.raghavendra.audit.common.observability.AuditMetrics.Result.FAILURE,
+                    com.raghavendra.audit.common.observability.AuditMetrics.Method.API_KEY,
+                    com.raghavendra.audit.common.observability.AuditMetrics.AuthReason.UNKNOWN_KEY);
         }
 
         filterChain.doFilter(request, response);

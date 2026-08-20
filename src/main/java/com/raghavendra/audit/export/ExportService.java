@@ -45,25 +45,40 @@ public class ExportService {
     private final AuditChainHeadRepository chainHeadRepository;
     private final Ed25519Signer signer;
     private final Clock clock;
+    private final com.raghavendra.audit.common.observability.AuditMetrics metrics;
 
     public ExportService(AuditEventRepository eventRepository,
                          AuditEventArchiveRepository archiveRepository,
                          AuditAmendmentRepository amendmentRepository,
                          AuditChainHeadRepository chainHeadRepository,
                          Ed25519Signer signer,
-                         Clock clock) {
+                         Clock clock,
+                         com.raghavendra.audit.common.observability.AuditMetrics metrics) {
         this.eventRepository = eventRepository;
         this.archiveRepository = archiveRepository;
         this.amendmentRepository = amendmentRepository;
         this.chainHeadRepository = chainHeadRepository;
         this.signer = signer;
         this.clock = clock;
+        this.metrics = metrics;
     }
 
     public enum FilterType { RESOURCE_ID, ACTOR_ID }
 
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public ExportBundle export(FilterType filterType, String filterValue) {
+        try {
+            ExportBundle bundle = doExport(filterType, filterValue);
+            // Success = a bundle was built AND signed (not a DB commit, so counted directly).
+            metrics.exportSuccess();
+            return bundle;
+        } catch (RuntimeException e) {
+            metrics.exportFailure();
+            throw e;
+        }
+    }
+
+    private ExportBundle doExport(FilterType filterType, String filterValue) {
         // Gather matching events from active + archive, ordered by sequence.
         List<EventRow> rows = new ArrayList<>();
         eventRepository.findAllByOrderBySequenceNumberAsc().stream()

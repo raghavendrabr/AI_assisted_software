@@ -1,6 +1,7 @@
 package com.raghavendra.audit.common.web;
 
 import com.raghavendra.audit.common.config.HardeningProperties;
+import com.raghavendra.audit.common.observability.CorrelationIdFilter;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ReadListener;
 import jakarta.servlet.ServletException;
@@ -73,7 +74,8 @@ public class RequestBodySizeLimitFilter extends OncePerRequestFilter {
         if (response.isCommitted()) {
             return;
         }
-        response.reset();
+        response.reset(); // clears any buffered headers, including the correlation id — re-add it
+        CorrelationIdFilter.reapplyRequestId(response);
         response.setStatus(HttpServletResponse.SC_REQUEST_ENTITY_TOO_LARGE); // 413
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
         response.setHeader(HttpHeaders.CONNECTION, "close");

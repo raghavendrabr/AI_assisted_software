@@ -1,0 +1,31 @@
+# =============================================================================
+# Profile: test  (test-specific OVERRIDES only)
+#
+# This file does NOT shadow or duplicate the main configuration. The test suite loads
+# src/main/resources/application.yml FIRST and then applies these overrides because the tests run
+# with the 'test' profile active (activated centrally via the shared @AbstractPostgresIntegrationTest
+# .WithPostgres meta-annotation and, for the few non-Postgres @SpringBootTest classes, an explicit
+# @ActiveProfiles("test")).
+#
+# Only genuinely test-specific values belong here:
+#   - clearly NON-PRODUCTION API keys used to exercise auth/authorization;
+#   - the 'test' profile also enables the Ed25519 ephemeral signing-key fallback (fail-closed policy
+#     in Ed25519Signer allows an ephemeral dev key ONLY under local/test);
+#   - JWT stays disabled by default here (JWT-enabled tests supply issuer/JWKS via
+#     @DynamicPropertySource in AbstractJwtEnabledTest);
+#   - observability (actuator exposure, health groups, ECS logging) is intentionally NOT overridden —
+#     it comes from the main application.yml so tests exercise the real configuration.
+# =============================================================================
+audit:
+  security:
+    api-keys:
+      - key: test-writer-key
+        role: WRITER
+      - key: test-compliance-key
+        role: COMPLIANCE_READER
+      - key: test-admin-key
+        role: ADMIN
+  # A deliberate test-only override of a main default, used by ConfigurationLoadingTest to prove the
+  # main-then-test layering: main sets max-request-bytes=65536; this test value must win.
+  limits:
+    max-request-bytes: 4096

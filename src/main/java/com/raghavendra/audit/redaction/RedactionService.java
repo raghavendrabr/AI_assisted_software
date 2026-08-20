@@ -51,6 +51,7 @@ public class RedactionService {
     private final Sha256Hasher hasher;
     private final Clock clock;
     private final EntityManager entityManager;
+    private final com.raghavendra.audit.common.observability.AuditMetrics metrics;
     private final ObjectMapper mapper = new ObjectMapper();
 
     public RedactionService(AuditEventRepository eventRepository,
@@ -59,7 +60,8 @@ public class RedactionService {
                             AuditChainHeadRepository chainHeadRepository,
                             Sha256Hasher hasher,
                             Clock clock,
-                            EntityManager entityManager) {
+                            EntityManager entityManager,
+                            com.raghavendra.audit.common.observability.AuditMetrics metrics) {
         this.eventRepository = eventRepository;
         this.archiveRepository = archiveRepository;
         this.amendmentRepository = amendmentRepository;
@@ -67,10 +69,22 @@ public class RedactionService {
         this.hasher = hasher;
         this.clock = clock;
         this.entityManager = entityManager;
+        this.metrics = metrics;
     }
 
     @Transactional
     public AuditAmendmentEntity redactField(long sequenceNumber, String field, String actorId) {
+        try {
+            AuditAmendmentEntity amendment = doRedactField(sequenceNumber, field, actorId);
+            metrics.incrementAfterCommit(metrics::redactionSuccess); // only after commit
+            return amendment;
+        } catch (RuntimeException e) {
+            metrics.redactionFailure();
+            throw e;
+        }
+    }
+
+    private AuditAmendmentEntity doRedactField(long sequenceNumber, String field, String actorId) {
         // Existence check first (clean 404 without taking the lock for a bad target). Redaction
         // works for ACTIVE and ARCHIVED events, so check both tables.
         boolean inActive = eventRepository.findBySequenceNumber(sequenceNumber).isPresent();

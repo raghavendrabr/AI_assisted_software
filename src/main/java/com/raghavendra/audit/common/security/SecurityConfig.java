@@ -4,6 +4,7 @@ import com.raghavendra.audit.common.config.HardeningProperties;
 import com.raghavendra.audit.common.security.jwt.AuditJwtDecoderFactory;
 import com.raghavendra.audit.common.security.jwt.JwtProperties;
 import com.raghavendra.audit.common.security.jwt.JwtScopeRoleConverter;
+import com.raghavendra.audit.common.observability.CorrelationIdFilter;
 import com.raghavendra.audit.common.web.RequestBodySizeLimitFilter;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -64,7 +65,8 @@ public class SecurityConfig {
                                                    AuthEventLogger authLog,
                                                    JwtProperties jwtProperties,
                                                    JwtScopeRoleConverter scopeRoleConverter,
-                                                   tools.jackson.databind.ObjectMapper objectMapper)
+                                                   tools.jackson.databind.ObjectMapper objectMapper,
+                                                   com.raghavendra.audit.common.observability.AuditMetrics metrics)
             throws Exception {
         boolean docsEnabled = hardening.getDocs().isEnabled();
         boolean docsPublic = docsEnabled && hardening.getDocs().isPublic();
@@ -91,6 +93,20 @@ public class SecurityConfig {
                     }
                     // When docs are disabled entirely, no rule is added here, so the doc paths
                     // fall through to denyAll() below (and springdoc is also switched off).
+
+                    auth
+                        // Actuator liveness/readiness probes are PUBLIC (for k8s / load-balancer
+                        // health checks) but expose status only (show-details=when-authorized).
+                        // Declared BEFORE the broader health rule so the specific paths win.
+                        .requestMatchers("/actuator/health/liveness", "/actuator/health/readiness")
+                            .permitAll()
+                        // Full health, info, and the Prometheus scrape — ADMIN only. Path-based so
+                        // matching does not depend on endpoint-bean discovery order. Endpoints that
+                        // are not exposed are simply unmapped (→ 404), so no catch-all denyAll on
+                        // the actuator namespace is needed here.
+                        .requestMatchers("/actuator/health/**", "/actuator/info",
+                                "/actuator/prometheus")
+                            .hasRole(ApiRole.ADMIN.name());
 
                     auth
                         // Redaction — ADMIN only. (Declared BEFORE the write rule so the more
@@ -120,17 +136,23 @@ public class SecurityConfig {
                         // grants access, so it can never be accidentally public.
                         .anyRequest().denyAll();
                 })
+                // Correlation id FIRST, so every response — including 400/401/403/413 — carries a
+                // request id and structured logs are correlated. Anchored to a standard Security
+                // filter (which has a registered order); registered before the other custom filters
+                // so it runs earliest among them.
+                .addFilterBefore(new CorrelationIdFilter(),
+                        UsernamePasswordAuthenticationFilter.class)
                 // Enforce the request-body size cap before authentication/authorization read the
                 // body. Placed before the API-key filter (and thus before controller binding).
                 .addFilterBefore(new RequestBodySizeLimitFilter(hardening),
                         UsernamePasswordAuthenticationFilter.class)
                 // Reject ambiguous both-credentials requests (Bearer + X-API-Key) with 400, before
                 // either authentication mechanism runs.
-                .addFilterBefore(new DualCredentialGuardFilter(authLog, objectMapper),
+                .addFilterBefore(new DualCredentialGuardFilter(authLog, objectMapper, metrics),
                         UsernamePasswordAuthenticationFilter.class)
                 // API-key authentication. It never overwrites a JWT authentication and never falls
                 // back when a Bearer token is present (see ApiKeyAuthFilter).
-                .addFilterBefore(new ApiKeyAuthFilter(apiKeyService, authLog),
+                .addFilterBefore(new ApiKeyAuthFilter(apiKeyService, authLog, metrics),
                         UsernamePasswordAuthenticationFilter.class)
                 .exceptionHandling(ex -> ex
                         // No/invalid key (unauthenticated) → 401; authenticated but wrong role → 403.
@@ -155,12 +177,16 @@ public class SecurityConfig {
             JwtAuthenticationConverter converter = new JwtAuthenticationConverter();
             converter.setJwtGrantedAuthoritiesConverter(scopeRoleConverter::convert);
             http.oauth2ResourceServer(oauth2 -> oauth2
+                    // JWT failures are counted here (single site) and still produce the RFC 6750
+                    // 401 + WWW-Authenticate: Bearer challenge (delegated).
+                    .authenticationEntryPoint(new JwtFailureMetricsEntryPoint(metrics))
                     .jwt(jwt -> jwt
                             .decoder(decoder)
                             .jwtAuthenticationConverter(converter)));
-            // Log JWT auth SUCCESS (fingerprint only) after the Bearer filter authenticates. JWT
-            // FAILURES are surfaced by the resource server (401 + WWW-Authenticate: Bearer).
-            http.addFilterAfter(new JwtAuthEventLoggingFilter(authLog),
+            // Log JWT auth SUCCESS (fingerprint only) + success metric after the Bearer filter
+            // authenticates. JWT FAILURES are surfaced by the resource server (401 +
+            // WWW-Authenticate: Bearer) and counted by the entry point above.
+            http.addFilterAfter(new JwtAuthEventLoggingFilter(authLog, metrics),
                     BearerTokenAuthenticationFilter.class);
         }
 

@@ -684,6 +684,54 @@ below because they are the clearest evidence of engineer-led, AI-accelerated wor
 
 ---
 
+### AI-021 — Observability foundation (Commit C)
+
+- **Intent:** add operational observability — Actuator health/probes, Prometheus metrics, Boot-native
+  ECS structured logging, and correlation ids — with strict exposure, bounded metric tags,
+  commit-safe success counters, and no secret leakage. Tracing/alerting are design-only.
+- **AI produced:** actuator config (allow-list health/info/prometheus; liveness/readiness groups;
+  details hidden unless authorized) + security matchers (probes public, rest ADMIN, before
+  `denyAll`); a first-in-chain `CorrelationIdFilter` (bounded `X-Request-Id`, UUID fallback, MDC
+  finally-clear, no async/error re-dispatch); `logging.structured.format.console=ecs` (human-readable
+  under `local`); an `AuditMetrics` abstraction with 7 dotted metric families, enum-bounded tags, and
+  a `TransactionSynchronization afterCommit` helper; instrumentation of append/verify/redact/archive/
+  export/auth at documented single sites; a `JwtFailureMetricsEntryPoint` that counts JWT failures
+  while preserving the RFC 6750 Bearer challenge.
+- **Accepted / Modified / Rejected — issues caught by tests:**
+  - Anchoring the correlation filter to a custom filter class failed at startup ("no registered
+    order"); re-anchored to `UsernamePasswordAuthenticationFilter` (verified real filter order:
+    CorrelationId → BodySize → DualCredential → ApiKey).
+  - `response.reset()` in the 413/400 filters wiped the `X-Request-Id` header; added a
+    `reapplyRequestId` helper so the id survives on those responses.
+  - A **test-resources `application.yml` shadows the main one** on the classpath, so `management.*`
+    was null in tests (prometheus/info 404). Mirrored the actuator config into the test yml; the
+    logging-safety test turns ECS on via a property.
+  - Kept `logstash-logback-encoder`, OpenTelemetry/OTLP, and a custom `logback-spring.xml` OUT
+    (Boot-native ECS suffices). Did NOT assert Flyway metrics (asserted only the runtime-confirmed
+    domain/HTTP/JVM/Hikari series).
+- **Engineer validation:** `./mvnw clean verify` → **263 tests, 0 failures, 3 skipped** (the POSIX-
+  only key-permission tests from Commit A). Tests cover actuator exposure/authorization (incl. ADMIN
+  JWT), correlation on success and 401/403/413 + no cross-thread MDC leak, commit-safe append
+  (success only after commit; rollback → failure), intact/broken verification, redaction/archive/
+  export success/failure, auth counted once per outcome, bounded metric tags, a real Prometheus
+  scrape containing domain+HTTP+JVM+Hikari series, and ECS-JSON logging safety (valid JSON,
+  requestId present, no secrets).
+- **Backward compatibility:** additive; no API/auth contract change. New surface: three actuator
+  endpoints, the `X-Request-Id` header, ECS console logs by default (human-readable under `local`),
+  and domain metrics.
+- **Deferred (design-only):** OpenTelemetry/OTLP tracing and alerting rules — documented, not built.
+- **Post-review test-config correction (engineer-directed):** removed the shadowing
+  `src/test/resources/application.yml` and replaced it with `application-test.yml` containing
+  **overrides only**. The `test` profile is now activated centrally (via `@ActiveProfiles("test")` on
+  the shared `@WithPostgres` meta-annotation, plus the two non-Postgres `@SpringBootTest` classes), so
+  tests load the main `application.yml` first and then apply test overrides. Added
+  `ConfigurationLoadingTest` proving a main-only property stays loaded, a test override wins, and
+  actuator exposure/health come from main. Clarified that dangerous actuator endpoints are simply not
+  web-exposed and currently fail closed at the security boundary (403) with no handler served.
+- **Human sign-off:** Reviewed and approved by Raghavendra Begur Rangaramu on 2026-08-19.
+
+---
+
 ## How to read this log going forward
 
 Each future task (implementation, tests, refactors) will get its own `AI-0xx` entry

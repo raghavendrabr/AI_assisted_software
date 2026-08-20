@@ -132,6 +132,25 @@ with `denyAll()`, so a new endpoint is denied until an explicit rule grants it.
 - **Prototype boundary:** mTLS and runtime key revocation are not implemented (documented future
   work).
 
+## 8a. Observability (ADR 0012)
+
+- **Actuator** on the main port, allow-listing only `health`, `info`, `prometheus`.
+  Liveness/readiness probes are **public** (status only); full health/info/prometheus require
+  **ADMIN**. Readiness includes `db` (not ready until PostgreSQL is reachable); liveness does not.
+  Dangerous endpoints (env/beans/configprops/heapdump/threaddump/loggers/shutdown) are not exposed.
+- **Metrics** via Micrometer → Prometheus: domain families `audit.events.appended`,
+  `audit.append.failures`, `audit.chain.verifications`, `audit.redactions`,
+  `audit.archive.operations`, `audit.export.operations`, `audit.authentication.attempts` — with
+  **bounded tags only** (`result`/`method`/`reason` enums; never ids/subjects/messages).
+  Append/redaction/archive successes are counted **after transaction commit**.
+- **Structured logging:** Boot-native **ECS JSON** on the console (human-readable under `local`),
+  with the `requestId` MDC value included; no secret/payload material is ever logged.
+- **Correlation ids:** a first-in-chain filter assigns/validates `X-Request-Id`
+  (`[A-Za-z0-9._-]{1,64}`, else a UUID), present on success and 400/401/403/413 responses, MDC
+  cleared in `finally`.
+- **Deferred (design-only):** OpenTelemetry/OTLP tracing and alerting rules (chain-verify failure,
+  auth-failure spikes, archive/signing failure, DB pool exhaustion).
+
 ## 9. Verification behaviors (violation types)
 
 `GET /audit/verify` walks active∪archived events (one ordered stream) + the amendment chain +

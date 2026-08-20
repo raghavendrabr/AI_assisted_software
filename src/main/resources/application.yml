@@ -60,6 +60,54 @@ springdoc:
     enabled: ${audit.docs.enabled:false}
 
 # -----------------------------------------------------------------------------
+# Observability (Commit C). Actuator stays on the MAIN application port. Only health, info, and
+# prometheus are exposed; everything else (env, configprops, beans, mappings, loggers, heapdump,
+# threaddump, shutdown, ...) is NOT exposed. Health details are hidden from unauthenticated callers
+# and shown only when authorized (ADMIN, per SecurityConfig). Liveness/readiness probe groups are
+# enabled; readiness includes the db indicator, liveness does not (see ADR 0012).
+management:
+  endpoints:
+    web:
+      exposure:
+        # Explicit allow-list: ONLY these three endpoints are web-exposed. Everything else
+        # (env, configprops, beans, mappings, loggers, heapdump, threaddump, shutdown, metrics, ...)
+        # is therefore NOT exposed and returns 404. Declared as a YAML list so each id binds
+        # individually.
+        include:
+          - health
+          - info
+          - prometheus
+  endpoint:
+    health:
+      access: read-only
+      probes:
+        enabled: true                      # /actuator/health/liveness and /readiness
+      show-details: when-authorized        # full details only for authorized (ADMIN) callers
+      show-components: when-authorized
+      group:
+        liveness:
+          include: livenessState           # no PostgreSQL dependency — a DB blip must not kill the pod
+        readiness:
+          include: readinessState,db       # not ready until PostgreSQL is reachable
+    info:
+      access: read-only
+    prometheus:
+      access: read-only
+  # Common tags kept low-cardinality; the app name lets multiple instances be distinguished.
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+# Boot-native structured logging (ECS JSON) on the console. No logstash encoder, no custom
+# logback-spring.xml. MDC values (e.g. requestId) are included in the ECS output.
+logging:
+  level:
+    root: INFO
+  structured:
+    format:
+      console: ecs
+
+# -----------------------------------------------------------------------------
 # API-key -> role mappings. Keys come from ENVIRONMENT VARIABLES — NO real keys are
 # committed here. If a variable is unset the entry resolves to an empty key and is
 # skipped, so the endpoint is simply inaccessible until a real key is provided.
@@ -104,18 +152,15 @@ audit:
     signing-key-id:   ${AUDIT_EXPORT_SIGNING_KEY_ID:audit-export-key-dev}
 # -----------------------------------------------------------------------------
 
-logging:
-  level:
-    root: INFO
-
 # =============================================================================
 # Profile: local
 #
 # Developer convenience only. Turns the OpenAPI/Swagger surface on and makes it public so a
-# developer can browse the API at http://localhost:8080/swagger-ui.html without a key. This block
-# is committed (unlike the git-ignored application-local.yml) so the local docs behavior is
-# consistent and version-controlled. It changes NOTHING outside the 'local' profile — the default
-# profile keeps docs disabled and non-public.
+# developer can browse the API at http://localhost:8080/swagger-ui.html without a key, and turns OFF
+# ECS structured logging so console logs are human-readable during development. This block is
+# committed (unlike the git-ignored application-local.yml) so the local behavior is consistent and
+# version-controlled. It changes NOTHING outside the 'local' profile — the default profile keeps
+# docs disabled and emits ECS JSON logs.
 # =============================================================================
 ---
 spring:
@@ -126,3 +171,7 @@ audit:
   docs:
     enabled: true
     public: true
+logging:
+  structured:
+    format:
+      console:                             # empty → disable ECS; use the default human-readable pattern

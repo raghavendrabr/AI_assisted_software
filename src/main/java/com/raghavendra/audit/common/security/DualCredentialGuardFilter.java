@@ -31,10 +31,13 @@ public class DualCredentialGuardFilter extends OncePerRequestFilter {
 
     private final AuthEventLogger authLog;
     private final ObjectMapper objectMapper;
+    private final com.raghavendra.audit.common.observability.AuditMetrics metrics;
 
-    public DualCredentialGuardFilter(AuthEventLogger authLog, ObjectMapper objectMapper) {
+    public DualCredentialGuardFilter(AuthEventLogger authLog, ObjectMapper objectMapper,
+                                     com.raghavendra.audit.common.observability.AuditMetrics metrics) {
         this.authLog = authLog;
         this.objectMapper = objectMapper;
+        this.metrics = metrics;
     }
 
     @Override
@@ -47,8 +50,13 @@ public class DualCredentialGuardFilter extends OncePerRequestFilter {
         if (hasBearer && hasApiKey) {
             authLog.log(AuthEventLogger.Method.BOTH_REJECTED, AuthEventLogger.Result.FAILURE,
                     "both-credentials", null);
+            metrics.authentication(
+                    com.raghavendra.audit.common.observability.AuditMetrics.Result.FAILURE,
+                    com.raghavendra.audit.common.observability.AuditMetrics.Method.AMBIGUOUS,
+                    com.raghavendra.audit.common.observability.AuditMetrics.AuthReason.BOTH_CREDENTIALS);
             if (!response.isCommitted()) {
                 response.reset();
+                com.raghavendra.audit.common.observability.CorrelationIdFilter.reapplyRequestId(response);
                 response.setStatus(HttpStatus.BAD_REQUEST.value()); // 400
                 response.setContentType(MediaType.APPLICATION_JSON_VALUE);
                 // Structured ApiError; static message, no credential echoed.

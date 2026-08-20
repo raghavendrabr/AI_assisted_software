@@ -21,9 +21,12 @@ import java.io.IOException;
 public class JwtAuthEventLoggingFilter extends OncePerRequestFilter {
 
     private final AuthEventLogger authLog;
+    private final com.raghavendra.audit.common.observability.AuditMetrics metrics;
 
-    public JwtAuthEventLoggingFilter(AuthEventLogger authLog) {
+    public JwtAuthEventLoggingFilter(AuthEventLogger authLog,
+                                     com.raghavendra.audit.common.observability.AuditMetrics metrics) {
         this.authLog = authLog;
+        this.metrics = metrics;
     }
 
     @Override
@@ -35,6 +38,10 @@ public class JwtAuthEventLoggingFilter extends OncePerRequestFilter {
             String principal = AuthEventLogger.jwtSubjectFingerprint(jwtAuth.getToken().getSubject());
             authLog.log(AuthEventLogger.Method.JWT, AuthEventLogger.Result.SUCCESS,
                     "valid-token", principal);
+            metrics.authentication(
+                    com.raghavendra.audit.common.observability.AuditMetrics.Result.SUCCESS,
+                    com.raghavendra.audit.common.observability.AuditMetrics.Method.JWT,
+                    com.raghavendra.audit.common.observability.AuditMetrics.AuthReason.VALID_TOKEN);
         }
         filterChain.doFilter(request, response);
     }

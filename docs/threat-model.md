@@ -42,6 +42,9 @@ API-level attackers.
 | **Invalid Bearer downgraded to API key** | API-key filter never runs when a Bearer header is present and never overwrites a JWT auth — no fallback | 401 |
 | **Half-configured JWT silently accepting tokens** | enabled-but-incomplete config is a fatal startup error | startup abort |
 | **Log injection via untrusted claim/key text** | all logged auth fields sanitized (control chars incl. CR/LF stripped, length bounded); credentials/tokens/digests never logged | — |
+| **Actuator information disclosure** | allow-list exposes only health/info/prometheus; env/beans/configprops/heapdump/threaddump/loggers/shutdown NOT exposed; health details hidden from unauthenticated callers; full health/info/prometheus require ADMIN | 401/403/404 |
+| **Sensitive data in metrics/logs** | metric tags are bounded enums only (no ids/subjects/messages); ECS logs never contain keys/tokens/payloads/redactable values/salts/signing-key bytes | guard tests |
+| **Correlation-id spoofing / log forging** | inbound X-Request-Id accepted only if it matches `[A-Za-z0-9._-]{1,64}`, else a UUID is generated; invalid values never logged; MDC cleared in finally | — |
 
 ## Residual risks / assumptions
 
